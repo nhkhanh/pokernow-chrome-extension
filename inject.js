@@ -6,12 +6,41 @@
   let customSoundEnabled = true;
   let lastSoundTime = 0;
   let isMyTurnPending = false; // Flag: expecting "your turn" sound
+  let audioUnlocked = false; // Track if audio has been unlocked via user interaction
   const DEBOUNCE_MS = 300;
-  const TURN_SOUND_WINDOW_MS = 1000; // Window to catch sound after turn detected
+  const TURN_SOUND_WINDOW_MS = 2000; // Window to catch sound after turn detected (increased)
+  const SOUND_CHECK_DELAY_MS = 150; // Delay before fallback sound plays
 
   // Last action highlight tracking
   let previousPlayerStates = new Map(); // Map of playerName -> {action, betAmount, isFold}
-  let lastActionPlayerSeat = null;
+
+  // Unlock audio on first user interaction (required by browsers)
+  function unlockAudio() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    console.log('[SoundReplacer] 🔓 Audio unlocked via user interaction');
+
+    // Create our own AudioContext for fallback use
+    if (!unlockedAudioContext) {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          unlockedAudioContext = new AudioContextClass();
+          console.log('[SoundReplacer] 🔊 Created AudioContext for fallback');
+        }
+      } catch (e) {
+        console.error('[SoundReplacer] Failed to create AudioContext:', e);
+      }
+    }
+
+    // Remove listeners after unlock
+    document.removeEventListener('click', unlockAudio);
+    document.removeEventListener('keydown', unlockAudio);
+    document.removeEventListener('touchstart', unlockAudio);
+  }
+  document.addEventListener('click', unlockAudio);
+  document.addEventListener('keydown', unlockAudio);
+  document.addEventListener('touchstart', unlockAudio);
 
   // Inject CSS for last action highlight
   function injectHighlightStyles() {
@@ -46,8 +75,11 @@
   const OriginalAudio = window.Audio;
   const OriginalPlay = HTMLAudioElement.prototype.play;
 
-  // Play custom sound with debounce
-  function playCustomSound() {
+  // Store a reference to an unlocked AudioContext for playing sounds
+  let unlockedAudioContext = null;
+
+  // Play custom sound using AudioContext (preferred) or fallback to Audio element
+  function playCustomSound(audioContext) {
     const now = Date.now();
     if (now - lastSoundTime < DEBOUNCE_MS) {
       console.log('[SoundReplacer] Debounced');
@@ -59,19 +91,50 @@
       console.log('[SoundReplacer] No custom sound set');
       return false;
     }
-    
+
+    // Use provided AudioContext, stored context, or create new one
+    const ctx = audioContext || unlockedAudioContext;
+
+    if (ctx) {
+      // Play via AudioContext (bypasses autoplay restrictions if context is unlocked)
+      playViaAudioContext(ctx);
+      return true;
+    }
+
+    // Fallback to Audio element (may fail if not unlocked)
     try {
       const audio = new OriginalAudio(customSoundDataUrl);
       audio.volume = 1.0;
       OriginalPlay.call(audio).catch(err => {
         console.error('[SoundReplacer] Play error:', err);
       });
-      console.log('[SoundReplacer] ▶ Playing custom sound!');
+      console.log('[SoundReplacer] ▶ Playing custom sound (Audio element)');
       return true;
     } catch (err) {
       console.error('[SoundReplacer] Error:', err);
       return false;
     }
+  }
+
+  // Play sound using AudioContext (works without user gesture if context is unlocked)
+  function playViaAudioContext(ctx) {
+    // Decode base64 data URL to ArrayBuffer
+    const base64 = customSoundDataUrl.split(',')[1];
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    ctx.decodeAudioData(bytes.buffer.slice(0), (buffer) => {
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+      console.log('[SoundReplacer] ▶ Playing custom sound (AudioContext)');
+    }, (err) => {
+      console.error('[SoundReplacer] decodeAudioData error:', err);
+    });
   }
 
   // Parse a card element to get its value
@@ -409,7 +472,6 @@
       const playerEl = document.querySelector(`.table-player-${lastActedPlayer.seat}`);
       if (playerEl) {
         playerEl.classList.add('last-action-highlight');
-        lastActionPlayerSeat = lastActedPlayer.seat;
         console.log(`[SoundReplacer] 🔆 Highlighting last action: ${lastActedPlayer.name} [${lastActedPlayer.action}]`);
       }
     }
@@ -457,11 +519,19 @@
       if (isMyTurn && !wasMyTurn) {
         console.log('[SoundReplacer] 🎯🎯🎯 MY TURN STARTED! 🎯🎯🎯');
         isMyTurnPending = true;
+
+        // FALLBACK: Directly play custom sound after a short delay
+        // Only works if audio was unlocked via user interaction
+        setTimeout(() => {
+          if (isMyTurnPending && customSoundEnabled && customSoundDataUrl && audioUnlocked) {
+            console.log('[SoundReplacer] ⏰ Fallback: Playing custom sound directly');
+            playCustomSound();
+            isMyTurnPending = false;
+          }
+        }, SOUND_CHECK_DELAY_MS);
+
         // Reset flag after window expires
         setTimeout(() => {
-          if (isMyTurnPending) {
-            console.log('[SoundReplacer] Turn window expired, no sound was triggered');
-          }
           isMyTurnPending = false;
         }, TURN_SOUND_WINDOW_MS);
       } else if (!isMyTurn && wasMyTurn) {
@@ -495,29 +565,50 @@
   // ============================================
   // INTERCEPT AND SELECTIVELY REPLACE SOUNDS
   // ============================================
+
+  // Real-time check if it's my turn (for sound interception)
+  function isCurrentlyMyTurn() {
+    const myTurnElement = document.querySelector('.table-player.decision-current.you-player');
+    return !!myTurnElement;
+  }
+
+  // Determine if we should replace the sound
+  function shouldReplaceSound() {
+    // Only replace when turn just started (pending flag), NOT for every action during my turn
+    return customSoundEnabled && customSoundDataUrl && isMyTurnPending;
+  }
+
   const OriginalAudioContext = window.AudioContext || window.webkitAudioContext;
   if (OriginalAudioContext) {
     const origCreateBufferSource = OriginalAudioContext.prototype.createBufferSource;
     OriginalAudioContext.prototype.createBufferSource = function() {
+      const audioCtx = this; // Capture the AudioContext
+      // Store for later use (fallback mechanism)
+      if (!unlockedAudioContext && audioCtx.state === 'running') {
+        unlockedAudioContext = audioCtx;
+        console.log('[SoundReplacer] 🔓 Stored unlocked AudioContext');
+      }
+
       const source = origCreateBufferSource.call(this);
       const origStart = source.start.bind(source);
-      
+
       source.start = function(...args) {
-        console.log('[SoundReplacer] AudioContext.start() called | isMyTurnPending:', isMyTurnPending);
-        
+        const isMyTurn = isCurrentlyMyTurn();
+        console.log('[SoundReplacer] AudioContext.start() called | isMyTurnPending:', isMyTurnPending, '| isCurrentlyMyTurn:', isMyTurn);
+
         // Only replace if it's my turn and replacement is enabled
-        if (customSoundEnabled && customSoundDataUrl && isMyTurnPending) {
+        if (shouldReplaceSound()) {
           console.log('[SoundReplacer] ✅ Replacing YOUR TURN sound');
-          playCustomSound();
+          playCustomSound(audioCtx); // Pass the AudioContext
           isMyTurnPending = false; // Reset flag
           return; // Don't play original
         }
-        
+
         // Otherwise play original sound
         console.log('[SoundReplacer] ➡️ Playing original sound (not your turn)');
         return origStart(...args);
       };
-      
+
       return source;
     };
   }
@@ -525,9 +616,10 @@
   // Also intercept HTMLAudioElement just in case
   HTMLAudioElement.prototype.play = function() {
     const src = this.src || this.currentSrc || '';
-    console.log('[SoundReplacer] audio.play() called | isMyTurnPending:', isMyTurnPending, '| src:', src);
-    
-    if (customSoundEnabled && customSoundDataUrl && isMyTurnPending) {
+    const isMyTurn = isCurrentlyMyTurn();
+    console.log('[SoundReplacer] audio.play() called | isMyTurnPending:', isMyTurnPending, '| isCurrentlyMyTurn:', isMyTurn, '| src:', src);
+
+    if (shouldReplaceSound()) {
       console.log('[SoundReplacer] ✅ Replacing YOUR TURN audio.play()');
       playCustomSound();
       isMyTurnPending = false;
