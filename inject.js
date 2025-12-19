@@ -14,6 +14,10 @@
   // Last action highlight tracking
   let previousPlayerStates = new Map(); // Map of playerName -> {action, betAmount, isFold}
 
+  // Game state tracking for logging
+  let lastTableCardCount = -1; // Track board cards to detect new game
+  let gameStartLogged = false; // Only log full status once per game
+
   // Unlock audio on first user interaction (required by browsers)
   function unlockAudio() {
     if (audioUnlocked) return;
@@ -472,8 +476,16 @@
       const playerEl = document.querySelector(`.table-player-${lastActedPlayer.seat}`);
       if (playerEl) {
         playerEl.classList.add('last-action-highlight');
-        console.log(`[SoundReplacer] 🔆 Highlighting last action: ${lastActedPlayer.name} [${lastActedPlayer.action}]`);
       }
+    }
+
+    return lastActedPlayer;
+  }
+
+  // Log only the player action (minimal logging)
+  function logPlayerAction(player) {
+    if (player) {
+      console.log(`[SoundReplacer] 🎬 ${player.name}: ${player.action}`);
     }
   }
 
@@ -508,12 +520,50 @@
       if (!shouldCheck) return;
 
       const isMyTurn = checkIfMyTurn();
+      const status = getTableStatus();
 
-      // Log status on any player change
-      const status = logTableStatus('mutation');
+      // Detect new game: board cards reset to 0 (new hand started)
+      const currentTableCardCount = document.querySelectorAll('.table-cards .card-container').length;
+      const isNewGame = lastTableCardCount > 0 && currentTableCardCount === 0;
+      const isNewStreet = currentTableCardCount > lastTableCardCount && currentTableCardCount > 0;
 
-      // Highlight the player who just made an action
-      highlightLastAction(status);
+      if (isNewGame) {
+        gameStartLogged = false;
+        previousPlayerStates.clear(); // Reset player states for new game
+      }
+
+      // Log board cards when new street is dealt
+      if (isNewStreet) {
+        const tableCards = getTableCards();
+        let street = '';
+        if (currentTableCardCount === 3) street = 'FLOP';
+        else if (currentTableCardCount === 4) street = 'TURN';
+        else if (currentTableCardCount === 5) street = 'RIVER';
+        console.log(`[SoundReplacer] 🎴 ${street}: ${tableCards.join(' ')}`);
+      }
+
+      lastTableCardCount = currentTableCardCount;
+
+      // Log full status only at game start, otherwise just log actions
+      if (!gameStartLogged && currentTableCardCount === 0) {
+        logTableStatus('new game');
+        gameStartLogged = true;
+        // Initialize player states without highlighting
+        for (const player of status.players) {
+          previousPlayerStates.set(player.name, {
+            action: player.action,
+            betAmount: player.betAmount,
+            isFold: player.isFold
+          });
+        }
+      } else if (!isNewStreet) {
+        // Just highlight and log the action (skip if we just logged new street)
+        const lastActedPlayer = highlightLastAction(status);
+        logPlayerAction(lastActedPlayer);
+      } else {
+        // Still need to update player states on new street
+        highlightLastAction(status);
+      }
       
       // Only trigger when turn STARTS (transitions from not-my-turn to my-turn)
       if (isMyTurn && !wasMyTurn) {
@@ -550,7 +600,12 @@
 
     // Initial check
     wasMyTurn = checkIfMyTurn();
-    const initialStatus = logTableStatus('initial');
+    const initialStatus = getTableStatus();
+    lastTableCardCount = document.querySelectorAll('.table-cards .card-container').length;
+
+    // Log initial status as game start
+    logTableStatus('initial');
+    gameStartLogged = true;
 
     // Initialize previous states (don't highlight on initial load)
     for (const player of initialStatus.players) {
