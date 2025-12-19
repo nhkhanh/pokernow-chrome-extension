@@ -33,5 +33,16 @@
     }
   });
 
+  // Listen for game log events from inject.js and forward to side panel
+  window.addEventListener('POKERNOW_GAME_LOG', (e) => {
+    chrome.runtime.sendMessage({
+      type: 'POKERNOW_GAME_LOG',
+      logType: e.detail.logType,
+      message: e.detail.message
+    }).catch(() => {
+      // Side panel might not be open, ignore errors
+    });
+  });
+
   console.log('[SoundReplacer] Content script loaded');
 })();

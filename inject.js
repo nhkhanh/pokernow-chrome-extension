@@ -18,6 +18,13 @@
   let lastTableCardCount = -1; // Track board cards to detect new game
   let gameStartLogged = false; // Only log full status once per game
 
+  // Dispatch log event to side panel via content script
+  function dispatchLogEvent(logType, message) {
+    window.dispatchEvent(new CustomEvent('POKERNOW_GAME_LOG', {
+      detail: { logType, message }
+    }));
+  }
+
   // Unlock audio on first user interaction (required by browsers)
   function unlockAudio() {
     if (audioUnlocked) return;
@@ -391,36 +398,24 @@
     const status = getTableStatus();
     const myCards = getMyCards();
     const tableCards = getTableCards();
-    
+
     // Determine street
     let street = 'preflop';
     if (tableCards.length === 3) street = 'flop';
     else if (tableCards.length === 4) street = 'turn';
     else if (tableCards.length === 5) street = 'river';
-    
-    console.log(`[SoundReplacer] ═══════════════════════════════════════════════════`);
-    console.log(`[SoundReplacer] 📊 Table Status (${trigger})`);
-    console.log(`[SoundReplacer] ═══════════════════════════════════════════════════`);
-    console.log(`[SoundReplacer] 💰 Pot: ${status.pot}`);
-    console.log(`[SoundReplacer] 🃏 My Cards: ${myCards.length > 0 ? myCards.join(' ') : 'hidden/none'}`);
-    console.log(`[SoundReplacer] 🎴 Board: ${tableCards.length > 0 ? tableCards.join(' ') : '(none)'} [${street}]`);
-    console.log(`[SoundReplacer] 👤 You: ${status.youPlayer || 'Not found'}`);
-    console.log(`[SoundReplacer] 🎯 Current Turn: ${status.currentTurn || 'None'}`);
-    console.log(`[SoundReplacer] ⚡ Is Your Turn: ${status.isYourTurn ? '✅ YES' : '❌ NO'}`);
-    console.log(`[SoundReplacer] ───────────────────────────────────────────────────`);
-    console.log(`[SoundReplacer] 👥 Players:`);
-    status.players.forEach(p => {
-      let markers = '';
-      if (p.isYou) markers += '👤';
-      if (p.hasDecision) markers += '🎯';
-      if (p.isDealer) markers += '🔘';
-      if (p.isOffline) markers += '💤';
-      
-      let actionStr = p.action ? `[${p.action}]` : '';
-      
-      console.log(`[SoundReplacer]   ${markers.padEnd(6)} ${p.name.padEnd(10)} | ${p.stack.padEnd(12)} | ${actionStr}`);
-    });
-    console.log(`[SoundReplacer] ═══════════════════════════════════════════════════`);
+
+    // Dispatch to side panel
+    if (trigger === 'new game') {
+      dispatchLogEvent('newgame', '--- NEW HAND ---');
+      // Show active player stacks
+      const activePlayers = status.players.filter(p => !p.isFold && !p.isOffline && p.stack);
+      const stacksStr = activePlayers.map(p => `${p.name}: ${p.stack}`).join(' | ');
+      dispatchLogEvent('status', stacksStr);
+      dispatchLogEvent('status', `Cards: ${myCards.length > 0 ? myCards.join(' ') : 'hidden'}`);
+    }
+    dispatchLogEvent('pot', `Pot: ${status.pot}`);
+
     return status;
   }
 
@@ -485,7 +480,7 @@
   // Log only the player action (minimal logging)
   function logPlayerAction(player) {
     if (player) {
-      console.log(`[SoundReplacer] 🎬 ${player.name}: ${player.action}`);
+      dispatchLogEvent('action', `${player.name}: ${player.action.toUpperCase()}`);
     }
   }
 
@@ -539,7 +534,7 @@
         if (currentTableCardCount === 3) street = 'FLOP';
         else if (currentTableCardCount === 4) street = 'TURN';
         else if (currentTableCardCount === 5) street = 'RIVER';
-        console.log(`[SoundReplacer] 🎴 ${street}: ${tableCards.join(' ')}`);
+        dispatchLogEvent('street', `${street}: ${tableCards.join(' ')}`);
       }
 
       lastTableCardCount = currentTableCardCount;
@@ -567,7 +562,7 @@
       
       // Only trigger when turn STARTS (transitions from not-my-turn to my-turn)
       if (isMyTurn && !wasMyTurn) {
-        console.log('[SoundReplacer] 🎯🎯🎯 MY TURN STARTED! 🎯🎯🎯');
+        dispatchLogEvent('turn', 'YOUR TURN');
         isMyTurnPending = true;
 
         // FALLBACK: Directly play custom sound after a short delay
@@ -584,8 +579,6 @@
         setTimeout(() => {
           isMyTurnPending = false;
         }, TURN_SOUND_WINDOW_MS);
-      } else if (!isMyTurn && wasMyTurn) {
-        console.log('[SoundReplacer] My turn ended');
       }
       
       wasMyTurn = isMyTurn;

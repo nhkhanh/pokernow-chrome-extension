@@ -4,8 +4,12 @@
   "version": "1.0",
   "description": "Replace the 'your turn' sound effect on PokerNow",
   "permissions": [
-    "storage"
+    "storage",
+    "sidePanel"
   ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "host_permissions": [
     "*://*.pokernow.club/*"
   ],
