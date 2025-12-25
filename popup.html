@@ -87,7 +87,22 @@
     .toggle input:checked + .toggle-slider:before {
       transform: translateX(22px);
     }
-    
+
+    .dropdown {
+      padding: 6px 12px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      min-width: 100px;
+    }
+
+    .dropdown:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+
     label {
       display: block;
       font-weight: 500;
@@ -233,6 +248,14 @@
         <input type="checkbox" id="enableToggle" checked>
         <span class="toggle-slider"></span>
       </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">AI Assistant</span>
+      <select id="aiProvider" class="dropdown">
+        <option value="off">Off</option>
+        <option value="gemini">Gemini</option>
+        <option value="claude">Claude</option>
+      </select>
     </div>
   </div>
   

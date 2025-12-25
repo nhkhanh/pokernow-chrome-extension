@@ -14,7 +14,8 @@
   },
   "host_permissions": [
     "*://*.pokernow.club/*",
-    "*://gemini.google.com/*"
+    "*://gemini.google.com/*",
+    "*://claude.ai/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -28,6 +29,11 @@
     {
       "matches": ["*://gemini.google.com/*"],
       "js": ["gemini-content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://claude.ai/*"],
+      "js": ["claude-content.js"],
       "run_at": "document_idle"
     }
   ],

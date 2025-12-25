@@ -2,6 +2,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   const enableToggle = document.getElementById('enableToggle');
+  const aiProvider = document.getElementById('aiProvider');
   const soundFile = document.getElementById('soundFile');
   const fileBtn = document.getElementById('fileBtn');
   const currentSound = document.getElementById('currentSound');
@@ -13,9 +14,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentAudio = null;
 
   // Load saved settings
-  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled'], (result) => {
+  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider'], (result) => {
     enableToggle.checked = result.enabled !== false;
-    
+    aiProvider.value = result.aiProvider || 'off';
+
     if (result.customSound && result.soundFileName) {
       showCurrentSound(result.soundFileName);
     }
@@ -25,6 +27,18 @@ document.addEventListener('DOMContentLoaded', () => {
   enableToggle.addEventListener('change', () => {
     chrome.storage.local.set({ enabled: enableToggle.checked }, () => {
       showStatus(enableToggle.checked ? 'Sound replacement enabled' : 'Sound replacement disabled', 'success');
+    });
+  });
+
+  // AI Provider dropdown
+  aiProvider.addEventListener('change', () => {
+    chrome.storage.local.set({ aiProvider: aiProvider.value }, () => {
+      const messages = {
+        'off': 'AI assistant disabled',
+        'gemini': 'Using Gemini AI',
+        'claude': 'Using Claude AI'
+      };
+      showStatus(messages[aiProvider.value], 'success');
     });
   });
 

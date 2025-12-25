@@ -4,6 +4,7 @@
 
   let customSoundDataUrl = null;
   let customSoundEnabled = true;
+  let aiProvider = 'off'; // 'off', 'gemini', or 'claude'
   let lastSoundTime = 0;
   let isMyTurnPending = false; // Flag: expecting "your turn" sound
   let audioUnlocked = false; // Track if audio has been unlocked via user interaction
@@ -38,14 +39,15 @@
     }
   }
 
-  // Send current hand log to Gemini for analysis
-  function sendToGemini() {
+  // Send current hand log to AI for analysis
+  function sendToAI() {
+    if (aiProvider === 'off') return;
     if (handLog.length === 0) return;
     const logText = handLog.join('\n');
-    window.dispatchEvent(new CustomEvent('POKERNOW_SEND_TO_GEMINI', {
-      detail: { prompt: 'analyze', handLog: logText }
+    window.dispatchEvent(new CustomEvent('POKERNOW_SEND_TO_AI', {
+      detail: { provider: aiProvider, handLog: logText }
     }));
-    console.log('[SoundReplacer] 🤖 Sent hand log to Gemini');
+    console.log(`[SoundReplacer] 🤖 Sent hand log to ${aiProvider}`);
   }
 
   // Unlock audio on first user interaction (required by browsers)
@@ -102,7 +104,8 @@
   window.addEventListener('POKERNOW_SOUND_SETTINGS', (e) => {
     customSoundDataUrl = e.detail.customSound;
     customSoundEnabled = e.detail.enabled;
-    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, enabled: customSoundEnabled });
+    aiProvider = e.detail.aiProvider || 'off';
+    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, enabled: customSoundEnabled, aiProvider });
   });
 
   // Store original Audio for playing our sound
@@ -894,8 +897,8 @@
         dispatchLogEvent('turn', 'YOUR TURN');
         isMyTurnPending = true;
 
-        // Send hand log to Gemini for analysis
-        sendToGemini();
+        // Send hand log to AI for analysis
+        sendToAI();
 
         // FALLBACK: Directly play custom sound after a short delay
         // Only works if audio was unlocked via user interaction

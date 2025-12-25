@@ -16,11 +16,12 @@
 
   // Load and send settings to page
   function sendSettings() {
-    chrome.storage.local.get(['customSound', 'enabled'], (result) => {
+    chrome.storage.local.get(['customSound', 'enabled', 'aiProvider'], (result) => {
       window.dispatchEvent(new CustomEvent('POKERNOW_SOUND_SETTINGS', {
         detail: {
           customSound: result.customSound || null,
-          enabled: result.enabled !== false
+          enabled: result.enabled !== false,
+          aiProvider: result.aiProvider || 'off'
         }
       }));
     });
@@ -44,21 +45,21 @@
     });
   });
 
-  // Listen for Gemini request from inject.js
-  window.addEventListener('POKERNOW_SEND_TO_GEMINI', (e) => {
+  // Listen for AI request from inject.js
+  window.addEventListener('POKERNOW_SEND_TO_AI', (e) => {
     chrome.runtime.sendMessage({
-      type: 'SEND_TO_GEMINI',
-      prompt: e.detail.prompt,
+      type: 'SEND_TO_AI',
+      provider: e.detail.provider,
       handLog: e.detail.handLog
     }).catch((err) => {
-      console.error('[SoundReplacer] Error sending to Gemini:', err);
+      console.error('[SoundReplacer] Error sending to AI:', err);
     });
   });
 
-  // Listen for Gemini response from background and forward to inject.js
+  // Listen for AI response from background and forward to inject.js
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'GEMINI_RESPONSE') {
-      window.dispatchEvent(new CustomEvent('POKERNOW_GEMINI_RESPONSE', {
+    if (message.type === 'AI_RESPONSE') {
+      window.dispatchEvent(new CustomEvent('POKERNOW_AI_RESPONSE', {
         detail: { response: message.response }
       }));
       sendResponse({ status: 'ok' });
