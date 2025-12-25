@@ -31,13 +31,14 @@
     }
   }
 
-  // Format cards with colors
+  // Format cards with four colors
   function formatCards(text) {
     if (!text) return text;
-    // Replace heart and diamond suits with red color
     return text
-      .replace(/([AKQJ0-9]+)([♥♦])/g, '<span class="cards card-red">$1$2</span>')
-      .replace(/([AKQJ0-9]+)([♠♣])/g, '<span class="cards card-black">$1$2</span>');
+      .replace(/([AKQJT0-9]+)(♥)/g, '<span class="cards card-heart">$1$2</span>')
+      .replace(/([AKQJT0-9]+)(♦)/g, '<span class="cards card-diamond">$1$2</span>')
+      .replace(/([AKQJT0-9]+)(♣)/g, '<span class="cards card-club">$1$2</span>')
+      .replace(/([AKQJT0-9]+)(♠)/g, '<span class="cards card-spade">$1$2</span>');
   }
 
   // Get current time string
@@ -54,6 +55,21 @@
   // Add a log entry
   function addLogEntry(type, message) {
     removeEmptyState();
+
+    // If this is my action, replace the last "turn" entry
+    if (type === 'myaction') {
+      const turnEntries = logContainer.querySelectorAll('.log-entry.turn');
+      const lastTurn = turnEntries[turnEntries.length - 1];
+      if (lastTurn) {
+        const content = lastTurn.querySelector('.label');
+        content.innerHTML = formatCards(message);
+        lastTurn.className = 'log-entry action';
+        logContainer.scrollTop = logContainer.scrollHeight;
+        return;
+      }
+      // Fallback: add as regular action if no turn entry found
+      type = 'action';
+    }
 
     const entry = document.createElement('div');
     entry.className = `log-entry ${type}`;

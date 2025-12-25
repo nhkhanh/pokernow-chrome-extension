@@ -16,7 +16,13 @@
 
   // Game state tracking for logging
   let lastTableCardCount = -1; // Track board cards to detect new game
+  let lastDealerPosition = null; // Track dealer position to detect new hand
   let gameStartLogged = false; // Only log full status once per game
+  let winnerLogged = false; // Track if winner was logged for current hand
+  let bbPlayerName = null; // Track BB player for inferring check action
+  let actionOrder = []; // Expected action order based on position
+  let playersActedThisRound = new Set(); // Track who has acted in current betting round
+  let streetHadBets = false; // Track if any bets were made on current street
 
   // Dispatch log event to side panel via content script
   function dispatchLogEvent(logType, message) {
@@ -240,6 +246,34 @@
     return null;
   }
 
+  // Calculate action order based on dealer position and street
+  function calculateActionOrder(status, isPreflop) {
+    const dealerPosNum = parseInt(status.dealerPosition) || 0;
+
+    // Get active players (not folded, not offline) sorted by distance from dealer
+    const activePlayers = status.players
+      .filter(p => !p.isFold && !p.isOffline)
+      .map(p => ({
+        ...p,
+        distFromDealer: p.seat > dealerPosNum ? p.seat - dealerPosNum : p.seat + 100 - dealerPosNum
+      }))
+      .sort((a, b) => a.distFromDealer - b.distFromDealer);
+
+    if (isPreflop) {
+      // Preflop: action starts after BB (position 3+), then SB, then BB
+      const sbIdx = activePlayers.findIndex(p => p.name === status.sbPlayer);
+      const bbIdx = activePlayers.findIndex(p => p.name === status.bbPlayer);
+
+      // Move players before and including BB to the end (they act last preflop)
+      const afterBB = activePlayers.filter((p, i) => i > bbIdx);
+      const sbBB = activePlayers.filter((p, i) => i <= bbIdx);
+      return [...afterBB, ...sbBB].map(p => p.name);
+    } else {
+      // Postflop: action starts from first active player after dealer
+      return activePlayers.map(p => p.name);
+    }
+  }
+
   // Get table status for logging
   function getTableStatus() {
     const players = document.querySelectorAll('.table-player');
@@ -338,12 +372,18 @@
     // Find max bet for determining raises
     const maxBet = Math.max(...playerList.map(p => p.betAmount), 0);
     const bbAmount = 1; // Standard BB
+    // Count how many players have the max bet (to distinguish raise vs call)
+    const playersAtMaxBet = playerList.filter(p => p.betAmount === maxBet && maxBet > bbAmount).length;
 
     // Second pass: determine action types
+    let raiserFound = false;
     playerList.forEach(p => {
       let action = '';
-      
-      if (p.rawAction) {
+
+      // Check fold first - folded players with blinds still show bet amount
+      if (p.isFold) {
+        action = 'fold';
+      } else if (p.rawAction) {
         action = p.rawAction.toLowerCase();
       } else if (p.betAmount > 0) {
         if (isPreflop) {
@@ -354,7 +394,13 @@
           } else if (p.betAmount === bbAmount) {
             action = 'limp';
           } else if (p.betAmount > bbAmount && p.betAmount === maxBet) {
-            action = `raise ${p.betText}`;
+            // First player at max bet is raiser, rest are callers
+            if (!raiserFound) {
+              action = `raise ${p.betText}`;
+              raiserFound = true;
+            } else {
+              action = `call ${p.betText}`;
+            }
           } else if (p.betAmount > bbAmount && p.betAmount < maxBet) {
             action = `call ${p.betText}`;
           } else {
@@ -363,15 +409,18 @@
         } else {
           // Postflop
           if (p.betAmount === maxBet && maxBet > 0) {
-            action = `bet ${p.betText}`;
+            if (!raiserFound) {
+              action = `bet ${p.betText}`;
+              raiserFound = true;
+            } else {
+              action = `call ${p.betText}`;
+            }
           } else if (p.betAmount < maxBet) {
             action = `call ${p.betText}`;
           } else {
             action = `bet ${p.betText}`;
           }
         }
-      } else if (p.isFold) {
-        action = 'fold';
       }
 
       status.players.push({
@@ -389,6 +438,10 @@
         status.isYourTurn = true;
       }
     });
+
+    // Store SB and BB player names for later use
+    status.sbPlayer = sbPlayer;
+    status.bbPlayer = bbPlayer;
 
     return status;
   }
@@ -408,15 +461,63 @@
     // Dispatch to side panel
     if (trigger === 'new game') {
       dispatchLogEvent('newgame', '--- NEW HAND ---');
+      // Show SB and BB
+      if (status.sbPlayer && status.bbPlayer) {
+        dispatchLogEvent('status', `SB: ${status.sbPlayer} | BB: ${status.bbPlayer}`);
+      }
       // Show active player stacks
       const activePlayers = status.players.filter(p => !p.isFold && !p.isOffline && p.stack);
       const stacksStr = activePlayers.map(p => `${p.name}: ${p.stack}`).join(' | ');
       dispatchLogEvent('status', stacksStr);
-      dispatchLogEvent('status', `Cards: ${myCards.length > 0 ? myCards.join(' ') : 'hidden'}`);
+      const heroName = status.youPlayer || 'Unknown';
+      dispatchLogEvent('status', `Hero (${heroName}): ${myCards.length > 0 ? myCards.join(' ') : 'hidden'}`);
     }
     dispatchLogEvent('pot', `Pot: ${status.pot}`);
 
     return status;
+  }
+
+  // Detect and log hand winners
+  function checkForWinners() {
+    if (winnerLogged) return;
+
+    const winners = document.querySelectorAll('.table-player.winner');
+    if (winners.length === 0) return;
+
+    // Get community cards that are part of winning hand (have 'up' class)
+    const communityCards = [];
+    document.querySelectorAll('.table-cards .card-container.up').forEach(cardEl => {
+      const card = parseCard(cardEl);
+      if (card) communityCards.push(card);
+    });
+
+    winners.forEach(winnerEl => {
+      const nameEl = winnerEl.querySelector('.table-player-name a');
+      const prizeEl = winnerEl.querySelector('.table-player-stack-prize .bb-value');
+      const handEl = winnerEl.querySelector('.player-hand-message .name span');
+
+      if (nameEl && prizeEl) {
+        const name = nameEl.textContent.trim();
+        const prize = prizeEl.textContent.trim().replace(/BB$/i, '').trim();
+        const hand = handEl ? handEl.textContent.trim() : '';
+
+        // Get winner's hole cards that are part of winning hand (have 'up' class)
+        const holeCards = [];
+        winnerEl.querySelectorAll('.table-player-cards .card-container.up').forEach(cardEl => {
+          const card = parseCard(cardEl);
+          if (card) holeCards.push(card);
+        });
+
+        // Combine hole cards and community cards for the winning 5
+        const winningCards = [...holeCards, ...communityCards];
+        const cardsStr = winningCards.length > 0 ? ` [${winningCards.join(' ')}]` : '';
+        const handStr = hand ? ` with ${hand}` : '';
+
+        dispatchLogEvent('winner', `${name} wins ${prize}BB${handStr}${cardsStr}`);
+      }
+    });
+
+    winnerLogged = true;
   }
 
   // Detect and highlight the player who made the last action
@@ -427,8 +528,8 @@
       previousHighlight.classList.remove('last-action-highlight');
     }
 
-    // Find who just acted by comparing with previous state
-    let lastActedPlayer = null;
+    // Find ALL players who just acted by comparing with previous state
+    const actedPlayers = [];
 
     for (const player of status.players) {
       const prevState = previousPlayerStates.get(player.name);
@@ -439,19 +540,33 @@
       if (!prevState) {
         // New player - check if they have an action
         if (player.action && player.action !== 'SB' && player.action !== 'BB') {
-          lastActedPlayer = player;
+          actedPlayers.push(player);
         }
       } else {
-        // Check if action changed
-        const actionChanged = prevState.action !== player.action;
+        // Check if state changed
         const betChanged = prevState.betAmount !== player.betAmount;
         const foldChanged = prevState.isFold !== player.isFold;
+        const isNewCheck = player.rawAction === 'check' && prevState.rawAction !== 'check';
+        const turnJustEnded = prevState.hasDecision && !player.hasDecision;
 
-        if (actionChanged || betChanged || foldChanged) {
-          // This player just acted
-          if (player.action && player.action !== prevState.action) {
-            lastActedPlayer = player;
+        // Detect action if bet/fold changed, or if player just checked
+        if (betChanged || foldChanged || isNewCheck) {
+          // Fold takes priority - player just folded
+          if (foldChanged && player.isFold) {
+            actedPlayers.push({ ...player, action: 'fold' });
+          } else if (player.action && player.action !== prevState.action) {
+            // Skip SB/BB - these are blinds, not actions
+            if (player.action !== 'SB' && player.action !== 'BB') {
+              actedPlayers.push(player);
+            }
+          } else if (isNewCheck) {
+            // Check action - rawAction changed but action might not have
+            actedPlayers.push({ ...player, action: 'check' });
           }
+        } else if (turnJustEnded && !player.isFold && player.betAmount === prevState.betAmount) {
+          // Player's turn ended, they didn't fold or bet -> they checked
+          // This catches cases where rawAction 'check' is missed
+          actedPlayers.push({ ...player, action: 'check' });
         }
       }
     }
@@ -461,12 +576,15 @@
     for (const player of status.players) {
       previousPlayerStates.set(player.name, {
         action: player.action,
+        rawAction: player.rawAction,
         betAmount: player.betAmount,
-        isFold: player.isFold
+        isFold: player.isFold,
+        hasDecision: player.hasDecision
       });
     }
 
-    // Apply highlight to the player who just acted
+    // Apply highlight to the last player who acted
+    const lastActedPlayer = actedPlayers[actedPlayers.length - 1];
     if (lastActedPlayer && lastActedPlayer.seat) {
       const playerEl = document.querySelector(`.table-player-${lastActedPlayer.seat}`);
       if (playerEl) {
@@ -474,13 +592,41 @@
       }
     }
 
-    return lastActedPlayer;
+    return actedPlayers;
   }
 
   // Log only the player action (minimal logging)
-  function logPlayerAction(player) {
-    if (player) {
-      dispatchLogEvent('action', `${player.name}: ${player.action.toUpperCase()}`);
+  function logPlayerAction(player, status) {
+    // Skip if it's your own action (handled separately via myaction)
+    // Skip SB/BB as they're not real actions
+    if (!player || player.isYou || player.action === 'SB' || player.action === 'BB') {
+      return;
+    }
+
+    // Check for any missed folds from players earlier in the action order
+    const playerIndex = actionOrder.indexOf(player.name);
+    if (playerIndex > 0) {
+      for (let i = 0; i < playerIndex; i++) {
+        const earlierPlayerName = actionOrder[i];
+        if (!playersActedThisRound.has(earlierPlayerName)) {
+          // Check if this player is now folded
+          const earlierPlayer = status.players.find(p => p.name === earlierPlayerName);
+          if (earlierPlayer && earlierPlayer.isFold && !earlierPlayer.isYou) {
+            dispatchLogEvent('action', `${earlierPlayerName}: FOLD`);
+            playersActedThisRound.add(earlierPlayerName);
+          }
+        }
+      }
+    }
+
+    // Log this player's action
+    const actionUpper = player.action.toUpperCase();
+    dispatchLogEvent('action', `${player.name}: ${actionUpper}`);
+    playersActedThisRound.add(player.name);
+
+    // Track if any bets were made on this street
+    if (actionUpper.includes('BET') || actionUpper.includes('RAISE') || actionUpper.includes('CALL')) {
+      streetHadBets = true;
     }
   }
 
@@ -517,47 +663,162 @@
       const isMyTurn = checkIfMyTurn();
       const status = getTableStatus();
 
-      // Detect new game: board cards reset to 0 (new hand started)
+      // Capture hero's previous state BEFORE any processing updates previousPlayerStates
+      const youPlayer = status.players.find(p => p.isYou);
+      const heroPrevState = youPlayer ? previousPlayerStates.get(youPlayer.name) : null;
+      // Capture if bets already happened before this mutation (to distinguish raise vs call)
+      const streetHadBetsAtStart = streetHadBets;
+
+      // Detect new game: board cards reset to 0 OR dealer position changed
       const currentTableCardCount = document.querySelectorAll('.table-cards .card-container').length;
-      const isNewGame = lastTableCardCount > 0 && currentTableCardCount === 0;
+      const currentDealerPos = status.dealerPosition;
+      const dealerChanged = lastDealerPosition !== null && currentDealerPos !== lastDealerPosition;
+      const cardsReset = lastTableCardCount > 0 && currentTableCardCount === 0;
+      const isNewGame = cardsReset || (dealerChanged && currentTableCardCount === 0);
       const isNewStreet = currentTableCardCount > lastTableCardCount && currentTableCardCount > 0;
 
       if (isNewGame) {
+        // Before clearing state, check for any missed folds from the previous hand
+        for (const player of status.players) {
+          const prevState = previousPlayerStates.get(player.name);
+          if (prevState && player.isFold && !prevState.isFold && !player.isYou) {
+            if (!playersActedThisRound.has(player.name)) {
+              dispatchLogEvent('action', `${player.name}: FOLD`);
+            }
+          }
+        }
+
         gameStartLogged = false;
+        winnerLogged = false; // Reset winner tracking for new hand
         previousPlayerStates.clear(); // Reset player states for new game
+        bbPlayerName = null; // Reset BB player tracking
+        actionOrder = []; // Reset action order
+        playersActedThisRound.clear(); // Reset acted players
+        streetHadBets = false; // Reset bet tracking
       }
 
       // Log board cards when new street is dealt
       if (isNewStreet) {
+        // Before logging the street, check for any missed actions
+        // This happens when the last player's action and street deal are batched together
+        // and bets get collected before we can detect the action
+
+        // First, check for any missed folds (players who folded but weren't logged)
+        for (const player of status.players) {
+          const prevState = previousPlayerStates.get(player.name);
+          if (prevState && player.isFold && !prevState.isFold && !player.isYou) {
+            // Player folded but we didn't log it
+            if (!playersActedThisRound.has(player.name)) {
+              dispatchLogEvent('action', `${player.name}: FOLD`);
+              playersActedThisRound.add(player.name);
+            }
+          }
+        }
+
+        // Find max bet from previous state (before collection)
+        let maxPrevBet = 0;
+        for (const [name, state] of previousPlayerStates) {
+          if (state.betAmount > maxPrevBet) {
+            maxPrevBet = state.betAmount;
+          }
+        }
+
+        // Check for players whose calls might have been missed
+        for (const player of status.players) {
+          const prevState = previousPlayerStates.get(player.name);
+          if (prevState && !player.isFold && !player.isYou) {
+            const prevBet = prevState.betAmount;
+            const prevAction = prevState.action;
+
+            // Handle BB check (preflop only)
+            if (prevAction === 'BB' && lastTableCardCount === 0) {
+              // BB checked if max bet was 1BB (no raise)
+              if (maxPrevBet === 1) {
+                dispatchLogEvent('action', `${player.name}: CHECK`);
+              }
+              // BB called if there was a raise and they're still in
+              else if (prevBet < maxPrevBet) {
+                dispatchLogEvent('action', `${player.name}: CALL ${maxPrevBet}BB`);
+              }
+              continue;
+            }
+
+            // Skip SB
+            if (prevAction === 'SB') continue;
+
+            // Skip players who were already at the max bet (they were the raiser)
+            if (prevBet === maxPrevBet) continue;
+
+            // If they had a bet less than max, they must have called
+            if (prevBet > 0 && prevBet < maxPrevBet) {
+              dispatchLogEvent('action', `${player.name}: CALL ${maxPrevBet}BB`);
+            }
+          }
+        }
+
+        // Check for missed CHECKs on postflop streets (when no one bet)
+        if (lastTableCardCount > 0 && !streetHadBets) {
+          // Postflop street where everyone checked
+          for (const playerName of actionOrder) {
+            if (!playersActedThisRound.has(playerName)) {
+              const player = status.players.find(p => p.name === playerName);
+              if (player && !player.isFold) {
+                if (player.isYou) {
+                  dispatchLogEvent('myaction', `${playerName}: CHECK`);
+                } else {
+                  dispatchLogEvent('action', `${playerName}: CHECK`);
+                }
+                playersActedThisRound.add(playerName);
+              }
+            }
+          }
+        }
+
         const tableCards = getTableCards();
+        const pot = getPotSize();
         let street = '';
         if (currentTableCardCount === 3) street = 'FLOP';
         else if (currentTableCardCount === 4) street = 'TURN';
         else if (currentTableCardCount === 5) street = 'RIVER';
-        dispatchLogEvent('street', `${street}: ${tableCards.join(' ')}`);
+        dispatchLogEvent('street', `${street}: ${tableCards.join(' ')} (Pot: ${pot})`);
+
+        // Reset action tracking for new street (postflop order)
+        actionOrder = calculateActionOrder(status, false);
+        playersActedThisRound.clear();
+        streetHadBets = false; // Reset bet tracking for new street
       }
 
+      // Check for winners after street logging
+      checkForWinners();
+
       lastTableCardCount = currentTableCardCount;
+      lastDealerPosition = currentDealerPos;
 
       // Log full status only at game start, otherwise just log actions
       if (!gameStartLogged && currentTableCardCount === 0) {
         logTableStatus('new game');
         gameStartLogged = true;
+        // Store BB player for later (to detect BB check before flop)
+        bbPlayerName = status.bbPlayer;
+        // Calculate preflop action order
+        actionOrder = calculateActionOrder(status, true);
+        playersActedThisRound.clear();
         // Initialize player states without highlighting
         for (const player of status.players) {
           previousPlayerStates.set(player.name, {
             action: player.action,
+            rawAction: player.rawAction,
             betAmount: player.betAmount,
-            isFold: player.isFold
+            isFold: player.isFold,
+            hasDecision: player.hasDecision
           });
         }
-      } else if (!isNewStreet) {
-        // Just highlight and log the action (skip if we just logged new street)
-        const lastActedPlayer = highlightLastAction(status);
-        logPlayerAction(lastActedPlayer);
       } else {
-        // Still need to update player states on new street
-        highlightLastAction(status);
+        // Highlight and log all actions
+        const actedPlayers = highlightLastAction(status);
+        for (const player of actedPlayers) {
+          logPlayerAction(player, status);
+        }
       }
       
       // Only trigger when turn STARTS (transitions from not-my-turn to my-turn)
@@ -579,8 +840,59 @@
         setTimeout(() => {
           isMyTurnPending = false;
         }, TURN_SOUND_WINDOW_MS);
+      } else if (!isMyTurn && wasMyTurn) {
+        // Your turn just ended - use heroPrevState captured at start (before highlightLastAction updated it)
+        if (youPlayer) {
+          let action = '';
+          // If user is BB with 1BB bet and action is still "BB", they checked
+          if (youPlayer.action === 'BB' && youPlayer.betAmount === 1 && status.isPreflop) {
+            action = 'CHECK';
+          }
+          // If hero has a bet, determine if it's a call or raise based on context
+          if (!action && youPlayer.betAmount > 0) {
+            // Check if this is higher than just posting blind
+            const isSB = youPlayer.name === status.sbPlayer && youPlayer.betAmount === 0.5;
+            const isBB = youPlayer.name === status.bbPlayer && youPlayer.betAmount === 1;
+            if (!isSB && !isBB) {
+              // If someone already bet/raised this street, hero's bet is a call
+              if (streetHadBetsAtStart) {
+                action = `CALL ${youPlayer.betText || youPlayer.betAmount + 'BB'}`;
+              } else if (youPlayer.action && youPlayer.action.startsWith('raise')) {
+                action = youPlayer.action.toUpperCase();
+              } else {
+                action = `CALL ${youPlayer.betText || youPlayer.betAmount + 'BB'}`;
+              }
+            }
+          }
+          // Detect check from rawAction (only if no bet action)
+          if (!action && youPlayer.rawAction === 'check') {
+            action = 'CHECK';
+          }
+          // If still no action and street just changed, use heroPrevState (captured before updates)
+          if (!action && isNewStreet && heroPrevState) {
+            if (heroPrevState.betAmount > 0 && heroPrevState.action !== 'SB' && heroPrevState.action !== 'BB') {
+              // Hero had a bet before collection - determine if it was a raise or call
+              // If streetHadBetsAtStart is true, someone else already bet/raised, so hero called
+              if (streetHadBetsAtStart) {
+                action = `CALL ${heroPrevState.betAmount}BB`;
+              } else if (heroPrevState.action && heroPrevState.action.startsWith('raise')) {
+                action = heroPrevState.action.toUpperCase();
+              } else {
+                action = `CALL ${heroPrevState.betAmount}BB`;
+              }
+            }
+          }
+          if (action) {
+            dispatchLogEvent('myaction', `${youPlayer.name}: ${action}`);
+            playersActedThisRound.add(youPlayer.name);
+            // Track if hero made a bet action
+            if (action.includes('BET') || action.includes('RAISE') || action.includes('CALL')) {
+              streetHadBets = true;
+            }
+          }
+        }
       }
-      
+
       wasMyTurn = isMyTurn;
     });
 
@@ -595,6 +907,7 @@
     wasMyTurn = checkIfMyTurn();
     const initialStatus = getTableStatus();
     lastTableCardCount = document.querySelectorAll('.table-cards .card-container').length;
+    lastDealerPosition = initialStatus.dealerPosition;
 
     // Log initial status as game start
     logTableStatus('initial');
@@ -604,8 +917,10 @@
     for (const player of initialStatus.players) {
       previousPlayerStates.set(player.name, {
         action: player.action,
+        rawAction: player.rawAction,
         betAmount: player.betAmount,
-        isFold: player.isFold
+        isFold: player.isFold,
+        hasDecision: player.hasDecision
       });
     }
   }

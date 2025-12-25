@@ -6,9 +6,9 @@
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  font-size: 13px;
-  background: #1a1a2e;
-  color: #e0e0e0;
+  font-size: 15px;
+  background: #f5f5f5;
+  color: #333;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -19,19 +19,19 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #16213e;
-  border-bottom: 1px solid #0f3460;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
 }
 
 .header h1 {
   font-size: 16px;
   font-weight: 600;
-  color: #ffd700;
+  color: #1a73e8;
 }
 
 .header button {
-  background: #0f3460;
-  color: #e0e0e0;
+  background: #1a73e8;
+  color: #fff;
   border: none;
   padding: 6px 12px;
   border-radius: 4px;
@@ -41,7 +41,7 @@ body {
 }
 
 .header button:hover {
-  background: #1a4a7a;
+  background: #1557b0;
 }
 
 .log-container {
@@ -54,8 +54,8 @@ body {
   padding: 6px 10px;
   margin-bottom: 4px;
   border-radius: 4px;
-  background: #16213e;
-  border-left: 3px solid #0f3460;
+  background: #fff;
+  border-left: 3px solid #ccc;
   word-wrap: break-word;
 }
 
@@ -66,71 +66,78 @@ body {
 }
 
 .log-entry.action {
-  border-left-color: #4ade80;
+  border-left-color: #16a34a;
 }
 
 .log-entry.action .label {
-  color: #4ade80;
+  color: #16a34a;
 }
 
 .log-entry.turn {
-  border-left-color: #ffd700;
-  background: #2d2a00;
+  border-left-color: #d97706;
+  background: #fef3c7;
 }
 
 .log-entry.turn .label {
-  color: #ffd700;
+  color: #d97706;
   font-weight: bold;
 }
 
 .log-entry.street {
-  border-left-color: #60a5fa;
+  border-left-color: #2563eb;
 }
 
 .log-entry.street .label {
-  color: #60a5fa;
+  color: #2563eb;
 }
 
 .log-entry.pot {
-  border-left-color: #f472b6;
+  border-left-color: #db2777;
 }
 
 .log-entry.pot .label {
-  color: #f472b6;
+  color: #db2777;
 }
 
 .log-entry.newgame {
-  border-left-color: #a78bfa;
-  background: #1e1b4b;
+  border-left-color: #7c3aed;
+  background: #ede9fe;
   text-align: center;
   font-weight: 600;
-  color: #a78bfa;
+  color: #7c3aed;
 }
 
 .log-entry.status {
-  border-left-color: #94a3b8;
-  font-size: 12px;
+  border-left-color: #64748b;
 }
 
 .log-entry.status .label {
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .cards {
   font-family: 'Segoe UI Symbol', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
 }
 
-.card-red {
-  color: #ef4444;
+.card-heart {
+  color: #db3131;
 }
 
-.card-black {
-  color: #e0e0e0;
+.card-diamond {
+  color: #4747ea;
+}
+
+.card-club {
+  color: #17b717;
+}
+
+.card-spade {
+  color: #000;
 }
 
 .empty-state {
   text-align: center;
-  color: #666;
+  color: #999;
   padding: 40px 20px;
 }
 
