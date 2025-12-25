@@ -5,19 +5,30 @@
   "description": "Replace the 'your turn' sound effect on PokerNow",
   "permissions": [
     "storage",
-    "sidePanel"
+    "sidePanel",
+    "tabs",
+    "scripting"
   ],
   "side_panel": {
     "default_path": "sidepanel.html"
   },
   "host_permissions": [
-    "*://*.pokernow.club/*"
+    "*://*.pokernow.club/*",
+    "*://gemini.google.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["*://*.pokernow.club/*"],
       "js": ["content.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["*://gemini.google.com/*"],
+      "js": ["gemini-content.js"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

@@ -44,5 +44,27 @@
     });
   });
 
+  // Listen for Gemini request from inject.js
+  window.addEventListener('POKERNOW_SEND_TO_GEMINI', (e) => {
+    chrome.runtime.sendMessage({
+      type: 'SEND_TO_GEMINI',
+      prompt: e.detail.prompt,
+      handLog: e.detail.handLog
+    }).catch((err) => {
+      console.error('[SoundReplacer] Error sending to Gemini:', err);
+    });
+  });
+
+  // Listen for Gemini response from background and forward to inject.js
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'GEMINI_RESPONSE') {
+      window.dispatchEvent(new CustomEvent('POKERNOW_GEMINI_RESPONSE', {
+        detail: { response: message.response }
+      }));
+      sendResponse({ status: 'ok' });
+    }
+    return true;
+  });
+
   console.log('[SoundReplacer] Content script loaded');
 })();

@@ -23,12 +23,29 @@
   let actionOrder = []; // Expected action order based on position
   let playersActedThisRound = new Set(); // Track who has acted in current betting round
   let streetHadBets = false; // Track if any bets were made on current street
+  let handLog = []; // Collect log entries for the current hand (for Gemini)
 
   // Dispatch log event to side panel via content script
   function dispatchLogEvent(logType, message) {
     window.dispatchEvent(new CustomEvent('POKERNOW_GAME_LOG', {
       detail: { logType, message }
     }));
+    // Also collect in handLog for Gemini (reset on new hand)
+    if (logType === 'newgame') {
+      handLog = [message];
+    } else {
+      handLog.push(message);
+    }
+  }
+
+  // Send current hand log to Gemini for analysis
+  function sendToGemini() {
+    if (handLog.length === 0) return;
+    const logText = handLog.join('\n');
+    window.dispatchEvent(new CustomEvent('POKERNOW_SEND_TO_GEMINI', {
+      detail: { prompt: 'analyze', handLog: logText }
+    }));
+    console.log('[SoundReplacer] 🤖 Sent hand log to Gemini');
   }
 
   // Unlock audio on first user interaction (required by browsers)
@@ -839,6 +856,9 @@
       if (isMyTurn && !wasMyTurn) {
         dispatchLogEvent('turn', 'YOUR TURN');
         isMyTurnPending = true;
+
+        // Send hand log to Gemini for analysis
+        sendToGemini();
 
         // FALLBACK: Directly play custom sound after a short delay
         // Only works if audio was unlocked via user interaction
