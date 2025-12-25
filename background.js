@@ -71,7 +71,7 @@ async function handleGeminiRequest(prompt, handLog) {
 }
 
 function buildPokerPrompt(handLog) {
-  return `You are a poker advisor. Analyze this hand and suggest the best action (fold, check, call, raise) with reasoning. Be concise (2-3 sentences max).
+  return `You are a poker advisor. Show Recommended Action first then reasoning.
 
 Hand Log:
 ${handLog}

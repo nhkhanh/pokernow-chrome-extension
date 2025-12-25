@@ -33,39 +33,79 @@
     check();
   }
 
-  // Find and click the send button
-  function clickSendButton() {
+  // Find the send button using various selectors
+  function findSendButton() {
     // Try various selectors for the send button
-    const sendBtn = document.querySelector('button[aria-label*="Send"]') ||
-                    document.querySelector('button[mattooltip*="Send"]') ||
-                    document.querySelector('.send-button') ||
-                    document.querySelector('button[data-test-id="send-button"]') ||
-                    document.querySelector('mat-icon[data-mat-icon-name="send"]')?.closest('button') ||
-                    Array.from(document.querySelectorAll('button')).find(btn =>
-                      btn.querySelector('mat-icon')?.textContent?.includes('send') ||
-                      btn.querySelector('svg')?.innerHTML?.includes('send')
-                    );
+    return document.querySelector('button[aria-label*="Send"]') ||
+           document.querySelector('button[aria-label*="send"]') ||
+           document.querySelector('button[mattooltip*="Send"]') ||
+           document.querySelector('.send-button') ||
+           document.querySelector('button[data-test-id="send-button"]') ||
+           document.querySelector('mat-icon[data-mat-icon-name="send"]')?.closest('button') ||
+           // Look for button with send icon
+           Array.from(document.querySelectorAll('button')).find(btn => {
+             const ariaLabel = btn.getAttribute('aria-label') || '';
+             const matTooltip = btn.getAttribute('mattooltip') || '';
+             if (ariaLabel.toLowerCase().includes('send') || matTooltip.toLowerCase().includes('send')) {
+               return true;
+             }
+             // Check for send icon inside button
+             const icon = btn.querySelector('mat-icon, svg, i');
+             if (icon) {
+               const iconText = icon.textContent?.toLowerCase() || '';
+               const iconClass = icon.className?.toLowerCase() || '';
+               if (iconText.includes('send') || iconClass.includes('send')) {
+                 return true;
+               }
+             }
+             return false;
+           });
+  }
+
+  // Click send button with retry logic
+  function clickSendButton(retryCount = 0, maxRetries = 5) {
+    const sendBtn = findSendButton();
 
     if (sendBtn && !sendBtn.disabled) {
+      console.log('[Gemini] Found send button, clicking...');
       sendBtn.click();
       return true;
     }
 
-    // Try pressing Enter as fallback
-    const inputEl = document.querySelector('div[contenteditable="true"]') ||
-                    document.querySelector('rich-textarea div[contenteditable]');
-    if (inputEl) {
-      const enterEvent = new KeyboardEvent('keydown', {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        which: 13,
-        bubbles: true
-      });
-      inputEl.dispatchEvent(enterEvent);
-      return true;
+    // If button not found or disabled, retry after delay
+    if (retryCount < maxRetries) {
+      console.log(`[Gemini] Send button not ready, retry ${retryCount + 1}/${maxRetries}...`);
+      setTimeout(() => {
+        if (!clickSendButton(retryCount + 1, maxRetries)) {
+          // Final fallback: try Enter key
+          tryEnterKey();
+        }
+      }, 300);
+      return true; // Return true to indicate we're handling it
     }
 
+    return false;
+  }
+
+  // Try pressing Enter as fallback
+  function tryEnterKey() {
+    const inputEl = document.querySelector('div[contenteditable="true"]') ||
+                    document.querySelector('rich-textarea div[contenteditable]') ||
+                    document.querySelector('textarea');
+    if (inputEl) {
+      console.log('[Gemini] Trying Enter key as fallback...');
+      inputEl.focus();
+
+      // Try multiple event types
+      const events = [
+        new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }),
+        new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }),
+        new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true })
+      ];
+
+      events.forEach(event => inputEl.dispatchEvent(event));
+      return true;
+    }
     return false;
   }
 
@@ -105,15 +145,11 @@
 
       // Wait a moment for the UI to update, then click send
       setTimeout(() => {
-        if (clickSendButton()) {
-          console.log('[Gemini] Prompt sent successfully');
-          // Start watching for response
-          watchForResponse();
-        } else {
-          console.error('[Gemini] Could not send prompt');
-          isProcessing = false;
-        }
-      }, 500);
+        console.log('[Gemini] Attempting to send prompt...');
+        clickSendButton();
+        // Start watching for response regardless (button click has retry logic)
+        watchForResponse();
+      }, 800);
     });
   }
 

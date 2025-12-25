@@ -502,16 +502,23 @@
     if (winners.length === 0) return;
 
     // Before logging winner, check for any missed folds
+    // Only log folds for players who JUST folded (transitioned from not-fold to fold)
+    // Don't re-log players who folded in previous streets
     const status = getTableStatus();
     for (const player of status.players) {
-      if (player.isFold && !playersActedThisRound.has(player.name)) {
-        // This player folded but wasn't logged
-        if (player.isYou) {
-          dispatchLogEvent('myaction', `${player.name}: FOLD`);
-        } else {
-          dispatchLogEvent('action', `${player.name}: FOLD`);
+      if (player.isFold) {
+        const prevState = previousPlayerStates.get(player.name);
+        // Only log if player just folded (wasn't folded before) or is a new player who's folded
+        const justFolded = prevState ? !prevState.isFold : true;
+
+        if (justFolded) {
+          if (player.isYou) {
+            dispatchLogEvent('myaction', `${player.name}: FOLD`);
+          } else {
+            dispatchLogEvent('action', `${player.name}: FOLD`);
+          }
+          playersActedThisRound.add(player.name);
         }
-        playersActedThisRound.add(player.name);
       }
     }
 
@@ -585,6 +592,25 @@
           // Fold takes priority - player just folded
           if (foldChanged && player.isFold) {
             actedPlayers.push({ ...player, action: 'fold' });
+          } else if (betChanged && player.betAmount > prevState.betAmount) {
+            // Bet increased - determine if it's a CALL or RAISE
+            // Check if someone else already had a bet >= player's new bet (before this mutation)
+            let someoneElseHadHigherBet = false;
+            for (const [name, state] of previousPlayerStates) {
+              if (name !== player.name && state.betAmount >= player.betAmount) {
+                someoneElseHadHigherBet = true;
+                break;
+              }
+            }
+
+            if (someoneElseHadHigherBet) {
+              // Player matched someone else's bet = CALL
+              actedPlayers.push({ ...player, action: `call ${player.betText}` });
+            } else {
+              // Player has the highest bet = RAISE/BET
+              const actionType = status.isPreflop || streetHadBets ? 'raise' : 'bet';
+              actedPlayers.push({ ...player, action: `${actionType} ${player.betText}` });
+            }
           } else if (player.action && player.action !== prevState.action) {
             // Skip SB/BB - these are blinds, not actions
             if (player.action !== 'SB' && player.action !== 'BB') {
@@ -628,6 +654,9 @@
 
   // Log only the player action (minimal logging)
   function logPlayerAction(player, status) {
+    // Skip if winner already logged (hand is over)
+    if (winnerLogged) return;
+
     // Skip if it's your own action (handled separately via myaction)
     // Skip SB/BB as they're not real actions
     if (!player || player.isYou || player.action === 'SB' || player.action === 'BB') {
@@ -699,6 +728,13 @@
       const heroPrevState = youPlayer ? previousPlayerStates.get(youPlayer.name) : null;
       // Capture if bets already happened before this mutation (to distinguish raise vs call)
       const streetHadBetsAtStart = streetHadBets;
+      // Capture max bet from previous states (before they get updated)
+      let maxPrevBet = 0;
+      for (const [, state] of previousPlayerStates) {
+        if (state.betAmount > maxPrevBet) {
+          maxPrevBet = state.betAmount;
+        }
+      }
 
       // Detect new game: board cards reset to 0 OR dealer position changed
       const currentTableCardCount = document.querySelectorAll('.table-cards .card-container').length;
@@ -819,9 +855,6 @@
         streetHadBets = false; // Reset bet tracking for new street
       }
 
-      // Check for winners after street logging
-      checkForWinners();
-
       lastTableCardCount = currentTableCardCount;
       lastDealerPosition = currentDealerPos;
 
@@ -845,12 +878,16 @@
           });
         }
       } else {
-        // Highlight and log all actions
+        // Highlight and log all actions BEFORE checking for winners
+        // This ensures actions like calls are logged before the winner
         const actedPlayers = highlightLastAction(status);
         for (const player of actedPlayers) {
           logPlayerAction(player, status);
         }
       }
+
+      // Check for winners after logging actions
+      checkForWinners();
       
       // Only trigger when turn STARTS (transitions from not-my-turn to my-turn)
       if (isMyTurn && !wasMyTurn) {
@@ -902,7 +939,8 @@
               } else if (youPlayer.action && youPlayer.action.startsWith('raise')) {
                 action = youPlayer.action.toUpperCase();
               } else {
-                action = `CALL ${callAmount}BB`;
+                // No one bet this street, hero is betting (not calling)
+                action = `BET ${youPlayer.betAmount}BB`;
               }
             }
           }
@@ -912,7 +950,10 @@
           }
           // If still no action and street just changed, use heroPrevState (captured before updates)
           if (!action && isNewStreet && heroPrevState) {
-            if (heroPrevState.betAmount > 0 && heroPrevState.action !== 'SB' && heroPrevState.action !== 'BB') {
+            // Hero was BB facing a raise - they must have called
+            if (heroPrevState.action === 'BB' && maxPrevBet > 1) {
+              action = `CALL ${maxPrevBet}BB`;
+            } else if (heroPrevState.betAmount > 0 && heroPrevState.action !== 'SB' && heroPrevState.action !== 'BB') {
               // Hero had a bet before collection - determine if it was a raise or call
               // If streetHadBetsAtStart is true, someone else already bet/raised, so hero called
               if (streetHadBetsAtStart) {
@@ -922,9 +963,28 @@
               } else {
                 action = `CALL ${heroPrevState.betAmount}BB`;
               }
+            } else if (streetHadBetsAtStart && maxPrevBet > 0) {
+              // Fallback: Hero's bet wasn't captured but someone bet and hero didn't fold
+              // They must have called the max bet
+              action = `CALL ${maxPrevBet}BB`;
             }
           }
           if (action) {
+            // Before logging hero's action, check for missed folds from earlier players
+            const heroIndex = actionOrder.indexOf(youPlayer.name);
+            if (heroIndex > 0) {
+              for (let i = 0; i < heroIndex; i++) {
+                const earlierPlayerName = actionOrder[i];
+                if (!playersActedThisRound.has(earlierPlayerName)) {
+                  const earlierPlayer = status.players.find(p => p.name === earlierPlayerName);
+                  if (earlierPlayer && earlierPlayer.isFold) {
+                    dispatchLogEvent('action', `${earlierPlayerName}: FOLD`);
+                    playersActedThisRound.add(earlierPlayerName);
+                  }
+                }
+              }
+            }
+
             dispatchLogEvent('myaction', `${youPlayer.name}: ${action}`);
             playersActedThisRound.add(youPlayer.name);
             // Track if hero made a bet action
