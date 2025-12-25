@@ -484,6 +484,20 @@
     const winners = document.querySelectorAll('.table-player.winner');
     if (winners.length === 0) return;
 
+    // Before logging winner, check for any missed folds
+    const status = getTableStatus();
+    for (const player of status.players) {
+      if (player.isFold && !playersActedThisRound.has(player.name)) {
+        // This player folded but wasn't logged
+        if (player.isYou) {
+          dispatchLogEvent('myaction', `${player.name}: FOLD`);
+        } else {
+          dispatchLogEvent('action', `${player.name}: FOLD`);
+        }
+        playersActedThisRound.add(player.name);
+      }
+    }
+
     // Get community cards that are part of winning hand (have 'up' class)
     const communityCards = [];
     document.querySelectorAll('.table-cards .card-container.up').forEach(cardEl => {
@@ -844,8 +858,12 @@
         // Your turn just ended - use heroPrevState captured at start (before highlightLastAction updated it)
         if (youPlayer) {
           let action = '';
+          // Check if hero folded
+          if (youPlayer.isFold) {
+            action = 'FOLD';
+          }
           // If user is BB with 1BB bet and action is still "BB", they checked
-          if (youPlayer.action === 'BB' && youPlayer.betAmount === 1 && status.isPreflop) {
+          else if (youPlayer.action === 'BB' && youPlayer.betAmount === 1 && status.isPreflop) {
             action = 'CHECK';
           }
           // If hero has a bet, determine if it's a call or raise based on context
@@ -854,13 +872,17 @@
             const isSB = youPlayer.name === status.sbPlayer && youPlayer.betAmount === 0.5;
             const isBB = youPlayer.name === status.bbPlayer && youPlayer.betAmount === 1;
             if (!isSB && !isBB) {
+              // Find the max bet on the street to determine correct call amount
+              const maxBetOnStreet = Math.max(...status.players.map(p => p.betAmount));
+              const callAmount = maxBetOnStreet > youPlayer.betAmount ? maxBetOnStreet : youPlayer.betAmount;
+
               // If someone already bet/raised this street, hero's bet is a call
               if (streetHadBetsAtStart) {
-                action = `CALL ${youPlayer.betText || youPlayer.betAmount + 'BB'}`;
+                action = `CALL ${callAmount}BB`;
               } else if (youPlayer.action && youPlayer.action.startsWith('raise')) {
                 action = youPlayer.action.toUpperCase();
               } else {
-                action = `CALL ${youPlayer.betText || youPlayer.betAmount + 'BB'}`;
+                action = `CALL ${callAmount}BB`;
               }
             }
           }
