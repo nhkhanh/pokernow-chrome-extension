@@ -4,7 +4,8 @@
 
   let customSoundDataUrl = null;
   let customSoundEnabled = true;
-  let aiProvider = 'off'; // 'off', 'gemini', or 'claude'
+  let aiProvider = 'off'; // 'off', 'gemini', 'claude', or 'chatgpt'
+  let aiMode = 'auto'; // 'auto' or 'manual'
   let lastSoundTime = 0;
   let isMyTurnPending = false; // Flag: expecting "your turn" sound
   let audioUnlocked = false; // Track if audio has been unlocked via user interaction
@@ -39,9 +40,13 @@
     }
   }
 
-  // Send current hand log to AI for analysis
+  // Send current hand log to AI for analysis (only in auto mode)
   function sendToAI() {
     if (aiProvider === 'off') return;
+    if (aiMode !== 'auto') {
+      console.log('[SoundReplacer] AI mode is manual - skipping automatic send');
+      return;
+    }
     if (handLog.length === 0) return;
     const logText = handLog.join('\n');
     window.dispatchEvent(new CustomEvent('POKERNOW_SEND_TO_AI', {
@@ -105,7 +110,25 @@
     customSoundDataUrl = e.detail.customSound;
     customSoundEnabled = e.detail.enabled;
     aiProvider = e.detail.aiProvider || 'off';
-    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, enabled: customSoundEnabled, aiProvider });
+    aiMode = e.detail.aiMode || 'auto';
+    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, enabled: customSoundEnabled, aiProvider, aiMode });
+  });
+
+  // Listen for manual AI request from side panel
+  window.addEventListener('POKERNOW_MANUAL_AI_REQUEST', () => {
+    if (aiProvider === 'off') {
+      console.log('[SoundReplacer] Manual AI request ignored - AI provider is off');
+      return;
+    }
+    if (handLog.length === 0) {
+      console.log('[SoundReplacer] Manual AI request ignored - no hand log');
+      return;
+    }
+    const logText = handLog.join('\n');
+    window.dispatchEvent(new CustomEvent('POKERNOW_SEND_TO_AI', {
+      detail: { provider: aiProvider, handLog: logText }
+    }));
+    console.log(`[SoundReplacer] 🤖 Manual AI request sent to ${aiProvider}`);
   });
 
   // Store original Audio for playing our sound

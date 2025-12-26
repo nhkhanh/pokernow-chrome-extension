@@ -29,6 +29,11 @@ body {
   color: #1a73e8;
 }
 
+.header-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 .header button {
   background: #1a73e8;
   color: #fff;
@@ -42,6 +47,14 @@ body {
 
 .header button:hover {
   background: #1557b0;
+}
+
+.header button#askAiBtn {
+  background: #16a34a;
+}
+
+.header button#askAiBtn:hover {
+  background: #15803d;
 }
 
 .log-container {

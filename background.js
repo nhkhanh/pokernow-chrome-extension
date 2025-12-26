@@ -65,6 +65,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ status: 'ok' });
     return true;
   }
+
+  if (message.type === 'MANUAL_AI_REQUEST') {
+    // Forward manual AI request to PokerNow tabs
+    forwardManualAIRequest();
+    sendResponse({ status: 'ok' });
+    return true;
+  }
 });
 
 async function handleAIRequest(provider, handLog) {
@@ -215,5 +222,20 @@ async function forwardToPokerNow(response) {
     }
   } catch (error) {
     console.error('[Background] Error forwarding response:', error);
+  }
+}
+
+async function forwardManualAIRequest() {
+  try {
+    const tabs = await chrome.tabs.query({ url: '*://*.pokernow.club/*' });
+    for (const tab of tabs) {
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'MANUAL_AI_REQUEST'
+      }).catch(() => {
+        // Tab might not have content script ready
+      });
+    }
+  } catch (error) {
+    console.error('[Background] Error forwarding manual AI request:', error);
   }
 }

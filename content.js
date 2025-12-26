@@ -16,12 +16,13 @@
 
   // Load and send settings to page
   function sendSettings() {
-    chrome.storage.local.get(['customSound', 'enabled', 'aiProvider'], (result) => {
+    chrome.storage.local.get(['customSound', 'enabled', 'aiProvider', 'aiMode'], (result) => {
       window.dispatchEvent(new CustomEvent('POKERNOW_SOUND_SETTINGS', {
         detail: {
           customSound: result.customSound || null,
           enabled: result.enabled !== false,
-          aiProvider: result.aiProvider || 'off'
+          aiProvider: result.aiProvider || 'off',
+          aiMode: result.aiMode || 'auto'
         }
       }));
     });
@@ -57,11 +58,16 @@
   });
 
   // Listen for AI response from background and forward to inject.js
+  // Also listen for manual AI request from side panel
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'AI_RESPONSE') {
       window.dispatchEvent(new CustomEvent('POKERNOW_AI_RESPONSE', {
         detail: { response: message.response }
       }));
+      sendResponse({ status: 'ok' });
+    } else if (message.type === 'MANUAL_AI_REQUEST') {
+      // Forward manual AI request to inject.js
+      window.dispatchEvent(new CustomEvent('POKERNOW_MANUAL_AI_REQUEST'));
       sendResponse({ status: 'ok' });
     }
     return true;

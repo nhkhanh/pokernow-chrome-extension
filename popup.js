@@ -3,6 +3,8 @@
 document.addEventListener('DOMContentLoaded', () => {
   const enableToggle = document.getElementById('enableToggle');
   const aiProvider = document.getElementById('aiProvider');
+  const aiModeRow = document.getElementById('aiModeRow');
+  const aiMode = document.getElementById('aiMode');
   const soundFile = document.getElementById('soundFile');
   const fileBtn = document.getElementById('fileBtn');
   const currentSound = document.getElementById('currentSound');
@@ -13,10 +15,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentAudio = null;
 
+  // Update AI mode row visibility
+  function updateAiModeVisibility() {
+    aiModeRow.style.display = aiProvider.value === 'off' ? 'none' : 'flex';
+  }
+
   // Load saved settings
-  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider'], (result) => {
+  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider', 'aiMode'], (result) => {
     enableToggle.checked = result.enabled !== false;
     aiProvider.value = result.aiProvider || 'off';
+    aiMode.value = result.aiMode || 'auto';
+    updateAiModeVisibility();
 
     if (result.customSound && result.soundFileName) {
       showCurrentSound(result.soundFileName);
@@ -40,6 +49,18 @@ document.addEventListener('DOMContentLoaded', () => {
         'chatgpt': 'Using ChatGPT'
       };
       showStatus(messages[aiProvider.value], 'success');
+      updateAiModeVisibility();
+    });
+  });
+
+  // AI Mode dropdown
+  aiMode.addEventListener('change', () => {
+    chrome.storage.local.set({ aiMode: aiMode.value }, () => {
+      const messages = {
+        'auto': 'AI will analyze automatically on your turn',
+        'manual': 'Click "Ask AI" in side panel for analysis'
+      };
+      showStatus(messages[aiMode.value], 'success');
     });
   });
 

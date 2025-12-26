@@ -5,6 +5,7 @@
 
   const logContainer = document.getElementById('log');
   const clearBtn = document.getElementById('clearBtn');
+  const askAiBtn = document.getElementById('askAiBtn');
 
   // Show empty state initially
   showEmptyState();
@@ -13,6 +14,13 @@
   clearBtn.addEventListener('click', () => {
     logContainer.innerHTML = '';
     showEmptyState();
+  });
+
+  // Ask AI button handler
+  askAiBtn.addEventListener('click', () => {
+    // Send message to background script to trigger AI analysis
+    chrome.runtime.sendMessage({ type: 'MANUAL_AI_REQUEST' })
+      .catch(err => console.error('[SidePanel] Error sending AI request:', err));
   });
 
   function showEmptyState() {
