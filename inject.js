@@ -481,9 +481,15 @@
     // Dispatch to side panel
     if (trigger === 'new game') {
       dispatchLogEvent('newgame', '--- NEW HAND ---');
-      // Show SB and BB
+      // Find BTN player
+      const dealerSeat = parseInt(status.dealerPosition) || 0;
+      const btnPlayer = status.players.find(p => p.seat === dealerSeat);
+      const btnName = btnPlayer ? btnPlayer.name : 'Unknown';
+      // Show BTN, SB and BB
       if (status.sbPlayer && status.bbPlayer) {
-        dispatchLogEvent('status', `SB: ${status.sbPlayer} | BB: ${status.bbPlayer}`);
+        dispatchLogEvent('status', `BTN: ${btnName} | SB: ${status.sbPlayer} | BB: ${status.bbPlayer}`);
+      } else {
+        dispatchLogEvent('status', `BTN: ${btnName}`);
       }
       // Show active player stacks
       const activePlayers = status.players.filter(p => !p.isFold && !p.isOffline && p.stack);

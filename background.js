@@ -2,6 +2,7 @@
 
 let geminiTabId = null;
 let claudeTabId = null;
+let chatgptTabId = null;
 let pendingPrompt = null;
 let pendingProvider = null;
 
@@ -43,7 +44,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'GEMINI_RESPONSE' || message.type === 'CLAUDE_RESPONSE') {
+  if (message.type === 'CHATGPT_READY') {
+    // ChatGPT page is ready, send pending prompt if any
+    if (pendingPrompt && pendingProvider === 'chatgpt' && sender.tab) {
+      chatgptTabId = sender.tab.id;
+      chrome.tabs.sendMessage(chatgptTabId, {
+        type: 'INPUT_PROMPT',
+        prompt: pendingPrompt
+      });
+      pendingPrompt = null;
+      pendingProvider = null;
+    }
+    sendResponse({ status: 'ok' });
+    return true;
+  }
+
+  if (message.type === 'GEMINI_RESPONSE' || message.type === 'CLAUDE_RESPONSE' || message.type === 'CHATGPT_RESPONSE') {
     // Forward AI response to PokerNow tabs
     forwardToPokerNow(message.response);
     sendResponse({ status: 'ok' });
@@ -59,6 +75,8 @@ async function handleAIRequest(provider, handLog) {
       await handleGeminiRequest(fullPrompt);
     } else if (provider === 'claude') {
       await handleClaudeRequest(fullPrompt);
+    } else if (provider === 'chatgpt') {
+      await handleChatGPTRequest(fullPrompt);
     }
   } catch (error) {
     console.error('[Background] Error handling AI request:', error);
@@ -66,22 +84,30 @@ async function handleAIRequest(provider, handLog) {
 }
 
 async function handleGeminiRequest(fullPrompt) {
-  // Check if Gemini tab exists and is still valid
-  if (geminiTabId) {
-    try {
-      const tab = await chrome.tabs.get(geminiTabId);
-      if (tab && tab.url && tab.url.includes('gemini.google.com')) {
-        // Tab exists, send prompt directly
-        chrome.tabs.sendMessage(geminiTabId, {
+  // First, try to find any existing Gemini tab
+  try {
+    const existingTabs = await chrome.tabs.query({ url: '*://gemini.google.com/*' });
+    if (existingTabs.length > 0) {
+      geminiTabId = existingTabs[0].id;
+      try {
+        await chrome.tabs.sendMessage(geminiTabId, {
           type: 'INPUT_PROMPT',
           prompt: fullPrompt
         });
         chrome.tabs.update(geminiTabId, { active: true });
         return;
+      } catch (msgError) {
+        // Content script not ready, reload the tab and set pending
+        console.log('[Background] Gemini tab exists but content script not ready, reloading...');
+        pendingPrompt = fullPrompt;
+        pendingProvider = 'gemini';
+        chrome.tabs.reload(geminiTabId);
+        chrome.tabs.update(geminiTabId, { active: true });
+        return;
       }
-    } catch (e) {
-      geminiTabId = null;
     }
+  } catch (e) {
+    console.error('[Background] Error finding Gemini tab:', e);
   }
 
   // Open new Gemini tab
@@ -95,22 +121,30 @@ async function handleGeminiRequest(fullPrompt) {
 }
 
 async function handleClaudeRequest(fullPrompt) {
-  // Check if Claude tab exists and is still valid
-  if (claudeTabId) {
-    try {
-      const tab = await chrome.tabs.get(claudeTabId);
-      if (tab && tab.url && tab.url.includes('claude.ai')) {
-        // Tab exists, send prompt directly
-        chrome.tabs.sendMessage(claudeTabId, {
+  // First, try to find any existing Claude tab
+  try {
+    const existingTabs = await chrome.tabs.query({ url: '*://claude.ai/*' });
+    if (existingTabs.length > 0) {
+      claudeTabId = existingTabs[0].id;
+      try {
+        await chrome.tabs.sendMessage(claudeTabId, {
           type: 'INPUT_PROMPT',
           prompt: fullPrompt
         });
         chrome.tabs.update(claudeTabId, { active: true });
         return;
+      } catch (msgError) {
+        // Content script not ready, reload the tab and set pending
+        console.log('[Background] Claude tab exists but content script not ready, reloading...');
+        pendingPrompt = fullPrompt;
+        pendingProvider = 'claude';
+        chrome.tabs.reload(claudeTabId);
+        chrome.tabs.update(claudeTabId, { active: true });
+        return;
       }
-    } catch (e) {
-      claudeTabId = null;
     }
+  } catch (e) {
+    console.error('[Background] Error finding Claude tab:', e);
   }
 
   // Open new Claude tab
@@ -123,8 +157,46 @@ async function handleClaudeRequest(fullPrompt) {
   claudeTabId = tab.id;
 }
 
+async function handleChatGPTRequest(fullPrompt) {
+  // First, try to find any existing ChatGPT tab
+  try {
+    const existingTabs = await chrome.tabs.query({ url: '*://chatgpt.com/*' });
+    if (existingTabs.length > 0) {
+      chatgptTabId = existingTabs[0].id;
+      try {
+        await chrome.tabs.sendMessage(chatgptTabId, {
+          type: 'INPUT_PROMPT',
+          prompt: fullPrompt
+        });
+        chrome.tabs.update(chatgptTabId, { active: true });
+        return;
+      } catch (msgError) {
+        // Content script not ready, reload the tab and set pending
+        console.log('[Background] ChatGPT tab exists but content script not ready, reloading...');
+        pendingPrompt = fullPrompt;
+        pendingProvider = 'chatgpt';
+        chrome.tabs.reload(chatgptTabId);
+        chrome.tabs.update(chatgptTabId, { active: true });
+        return;
+      }
+    }
+  } catch (e) {
+    console.error('[Background] Error finding ChatGPT tab:', e);
+  }
+
+  // Open new ChatGPT tab
+  pendingPrompt = fullPrompt;
+  pendingProvider = 'chatgpt';
+  const tab = await chrome.tabs.create({
+    url: 'https://chatgpt.com/',
+    active: true
+  });
+  chatgptTabId = tab.id;
+}
+
 function buildPokerPrompt(handLog) {
   return `You are a poker advisor. Show Recommended Action first then reasoning.
+If recommending bet or raise, include the value in BB (e.g., "Raise to 8BB" or "Bet 3BB").
 
 Hand Log:
 ${handLog}

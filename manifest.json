@@ -15,7 +15,8 @@
   "host_permissions": [
     "*://*.pokernow.club/*",
     "*://gemini.google.com/*",
-    "*://claude.ai/*"
+    "*://claude.ai/*",
+    "*://chatgpt.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -34,6 +35,11 @@
     {
       "matches": ["*://claude.ai/*"],
       "js": ["claude-content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://chatgpt.com/*"],
+      "js": ["chatgpt-content.js"],
       "run_at": "document_idle"
     }
   ],

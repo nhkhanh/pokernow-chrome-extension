@@ -36,7 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const messages = {
         'off': 'AI assistant disabled',
         'gemini': 'Using Gemini AI',
-        'claude': 'Using Claude AI'
+        'claude': 'Using Claude AI',
+        'chatgpt': 'Using ChatGPT'
       };
       showStatus(messages[aiProvider.value], 'success');
     });
