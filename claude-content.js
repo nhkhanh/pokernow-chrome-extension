@@ -114,8 +114,16 @@
       // Focus the input
       inputEl.focus();
 
-      // Insert the prompt text
-      inputEl.textContent = prompt;
+      // Convert line breaks to proper HTML paragraphs for ProseMirror
+      const lines = prompt.split('\n');
+      if (lines.length > 1) {
+        // Multiple lines - use paragraph elements
+        inputEl.innerHTML = lines.map(line => `<p>${line || '<br>'}</p>`).join('');
+      } else {
+        // Single line - use textContent
+        inputEl.textContent = prompt;
+      }
+
       // Trigger input event
       inputEl.dispatchEvent(new InputEvent('input', {
         bubbles: true,
