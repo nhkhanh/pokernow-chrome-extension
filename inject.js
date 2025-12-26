@@ -607,6 +607,10 @@
       // Skip the player whose turn it is (they haven't acted yet)
       if (player.hasDecision) continue;
 
+      // Skip all-in players (they can't act)
+      const stackValue = parseFloat(player.stack) || 0;
+      if (stackValue === 0 && player.betAmount > 0) continue;
+
       if (!prevState) {
         // New player - check if they have an action
         if (player.action && player.action !== 'SB' && player.action !== 'BB') {
@@ -796,7 +800,8 @@
         streetHadBets = false; // Reset bet tracking
       }
 
-      // Log board cards when new street is dealt
+      // Prepare street info if new street is dealt (but don't log yet)
+      let newStreetInfo = null;
       if (isNewStreet) {
         // Before logging the street, check for any missed actions
         // This happens when the last player's action and street deal are batched together
@@ -873,18 +878,14 @@
           }
         }
 
+        // Store street info to log AFTER current actions are detected
         const tableCards = getTableCards();
         const pot = getPotSize();
         let street = '';
         if (currentTableCardCount === 3) street = 'FLOP';
         else if (currentTableCardCount === 4) street = 'TURN';
         else if (currentTableCardCount === 5) street = 'RIVER';
-        dispatchLogEvent('street', `${street}: ${tableCards.join(' ')} (Pot: ${pot})`);
-
-        // Reset action tracking for new street (postflop order)
-        actionOrder = calculateActionOrder(status, false);
-        playersActedThisRound.clear();
-        streetHadBets = false; // Reset bet tracking for new street
+        newStreetInfo = { street, tableCards, pot };
       }
 
       lastTableCardCount = currentTableCardCount;
@@ -910,12 +911,22 @@
           });
         }
       } else {
-        // Highlight and log all actions BEFORE checking for winners
-        // This ensures actions like calls are logged before the winner
+        // Highlight and log all actions BEFORE logging the street
+        // This ensures actions from the previous street are logged before the new street
         const actedPlayers = highlightLastAction(status);
         for (const player of actedPlayers) {
           logPlayerAction(player, status);
         }
+      }
+
+      // NOW log the street change (after actions from previous street are logged)
+      if (newStreetInfo) {
+        dispatchLogEvent('street', `${newStreetInfo.street}: ${newStreetInfo.tableCards.join(' ')} (Pot: ${newStreetInfo.pot})`);
+
+        // Reset action tracking for new street (postflop order)
+        actionOrder = calculateActionOrder(status, false);
+        playersActedThisRound.clear();
+        streetHadBets = false; // Reset bet tracking for new street
       }
 
       // Check for winners after logging actions
