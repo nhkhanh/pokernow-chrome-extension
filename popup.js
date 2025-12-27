@@ -1,4 +1,4 @@
-// Popup script for PokerNow Sound Replacer
+// Popup script for PokerNow Extension
 
 document.addEventListener('DOMContentLoaded', () => {
   const enableToggle = document.getElementById('enableToggle');

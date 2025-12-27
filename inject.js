@@ -1,4 +1,4 @@
-// PokerNow Sound Replacer - Injected into page context
+// PokerNow Extension - Injected into page context
 (function() {
   'use strict';
 

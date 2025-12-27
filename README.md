@@ -1,4 +1,4 @@
-# PokerNow Sound Replacer
+# PokerNow Extension
 
 A Chrome extension that replaces the "your turn" notification sound on PokerNow.club with a custom sound of your choice.
 

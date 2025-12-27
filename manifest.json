@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "PokerNow Sound Replacer",
+  "name": "PokerNow Extension",
   "version": "1.0",
   "description": "Replace the 'your turn' sound effect on PokerNow",
   "permissions": [

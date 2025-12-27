@@ -1,4 +1,4 @@
-// PokerNow Sound Replacer - Content Script
+// PokerNow Extension - Content Script
 // Injects page script and bridges settings from extension storage
 
 (function() {
