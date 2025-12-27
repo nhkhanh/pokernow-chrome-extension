@@ -1,5 +1,22 @@
 // Background service worker for coordinating AI requests
 
+// Inject WebSocket override early into PokerNow pages
+chrome.webNavigation.onCommitted.addListener(async (details) => {
+  if (details.frameId !== 0) return; // Only main frame
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: details.tabId },
+      files: ['ws-override.js'],
+      world: 'MAIN',
+      injectImmediately: true
+    });
+    console.log('[Background] WebSocket override injected into tab', details.tabId);
+  } catch (error) {
+    console.error('[Background] Failed to inject WebSocket override:', error);
+  }
+}, { url: [{ hostSuffix: 'pokernow.club' }] });
+
 let geminiTabId = null;
 let claudeTabId = null;
 let chatgptTabId = null;

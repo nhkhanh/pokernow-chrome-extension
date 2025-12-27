@@ -7,7 +7,8 @@
     "storage",
     "sidePanel",
     "tabs",
-    "scripting"
+    "scripting",
+    "webNavigation"
   ],
   "side_panel": {
     "default_path": "sidepanel.html"
@@ -45,7 +46,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["inject.js"],
+      "resources": ["inject.js", "ws-override.js"],
       "matches": ["*://*.pokernow.club/*"]
     }
   ],

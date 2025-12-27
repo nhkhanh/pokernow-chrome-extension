@@ -2,39 +2,14 @@
 (function() {
   'use strict';
 
+  console.log('[SoundReplacer] inject.js loading...');
+
   // ============================================
-  // WEBSOCKET INTERCEPTION FOR GAME EVENTS
+  // WEBSOCKET MESSAGE PARSING (called by ws-override.js)
   // ============================================
-  const OriginalWebSocket = window.WebSocket;
 
-  window.WebSocket = function(url, protocols) {
-    const socket = protocols
-      ? new OriginalWebSocket(url, protocols)
-      : new OriginalWebSocket(url);
-
-    // Check if this is PokerNow's game socket
-    if (url && url.includes('pokernow.club')) {
-      console.log('[SoundReplacer] 🔌 Intercepted PokerNow WebSocket:', url);
-
-      // ONLY use addEventListener - don't touch onmessage property!
-      // This is non-destructive and won't interfere with Socket.IO
-      socket.addEventListener('message', (event) => {
-        parseSocketMessage(event.data);
-      });
-    }
-
-    return socket;
-  };
-
-  // Preserve WebSocket static properties and prototype
-  window.WebSocket.prototype = OriginalWebSocket.prototype;
-  window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-  window.WebSocket.OPEN = OriginalWebSocket.OPEN;
-  window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
-  window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
-
-  // Parse Socket.IO message format
-  function parseSocketMessage(data) {
+  // Parse Socket.IO message format - exposed globally for ws-override.js
+  window.__pokerNowParseSocketMessage = function(data) {
     if (typeof data !== 'string') return;
 
     // Socket.IO uses prefix codes: 0=open, 2=ping, 3=pong, 4=message
@@ -52,13 +27,250 @@
     }
   }
 
+  // Track socket-based game state
+  let socketPlayers = {}; // playerId -> {name, stack}
+  let socketPrevPGS = {}; // Previous player game status
+  let socketPrevTB = {};  // Previous table bets
+  let socketHandNum = 0;  // Current hand number
+  let socketPrevCards = 0; // Previous community card count
+  let socketPrevCHB = 0;  // Previous current highest bet (to detect first bet vs call)
+
   // Handle parsed game events from socket
   function handleGameEvent(eventName, data) {
-    // Log all events for debugging
-    console.log('[Socket]', eventName, data);
+    if (eventName === 'registered') {
+      // Initial game state - extract full game info
+      const gs = data.gameState;
+      if (!gs) return;
 
-    // TODO: Map socket events to game actions
-    // This gives us real-time data without DOM scraping
+      // Extract player info with stacks
+      if (gs.players) {
+        socketPlayers = {};
+        const playerList = [];
+        for (const [id, p] of Object.entries(gs.players)) {
+          socketPlayers[id] = { name: p.name, stack: p.stack };
+          if (p.status === 'inGame') {
+            playerList.push(`${p.name} (${p.stack})`);
+          }
+        }
+        console.log('[Socket] === GAME INFO ===');
+        console.log(`[Socket] Blinds: ${gs.smallBlind}/${gs.bigBlind}`);
+        console.log(`[Socket] Players: ${playerList.join(', ')}`);
+      }
+
+      // Log current player's hole cards
+      const myId = data.currentPlayer?.id;
+      if (myId && gs.pC?.[myId]?.cards) {
+        const myCards = gs.pC[myId].cards
+          .map(c => c.value)
+          .filter(v => v)
+          .join(' ');
+        if (myCards) {
+          console.log(`[Socket] Your cards: ${myCards}`);
+        }
+      }
+
+      // Log current hand state if in progress
+      if (gs.gN) {
+        socketHandNum = gs.gN;
+        const dealer = gs.dealerID ? (socketPlayers[gs.dealerID]?.name || '?') : '?';
+        const sb = gs.sBPI ? (socketPlayers[gs.sBPI]?.name || '?') : '?';
+        const bb = gs.bBPI ? (socketPlayers[gs.bBPI]?.name || '?') : '?';
+        console.log(`[Socket] Hand #${gs.gN} - Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
+
+        // Log community cards if any
+        if (gs.oTC?.['1']?.length > 0) {
+          const cards = gs.oTC['1'];
+          const streetName = cards.length === 3 ? 'FLOP' : cards.length === 4 ? 'TURN' : cards.length === 5 ? 'RIVER' : 'BOARD';
+          console.log(`[Socket] ${streetName}: ${cards.join(' ')}`);
+          socketPrevCards = cards.length;
+        }
+
+        // Log pot if any
+        if (gs.pot > 0) {
+          console.log(`[Socket] Pot: ${gs.pot}`);
+        }
+      }
+
+      if (gs.pGS) {
+        socketPrevPGS = { ...gs.pGS };
+      }
+      if (gs.tB) {
+        socketPrevTB = { ...gs.tB };
+      }
+      if (gs.cHB) {
+        socketPrevCHB = gs.cHB;
+      }
+      return;
+    }
+
+    // Handle direct action events
+    if (eventName === 'action') {
+      console.log(`[Socket] ACTION EVENT: ${data?.type || JSON.stringify(data)}`);
+      return;
+    }
+
+    if (eventName !== 'gC') return; // Only process game changes
+
+    // Update player info if provided
+    if (data.players) {
+      for (const [id, p] of Object.entries(data.players)) {
+        if (p.name) {
+          socketPlayers[id] = { name: p.name, stack: p.stack ?? socketPlayers[id]?.stack };
+        } else if (socketPlayers[id] && p.stack !== undefined) {
+          socketPlayers[id].stack = p.stack;
+        }
+      }
+    }
+
+    const getName = (id) => socketPlayers[id]?.name || id;
+
+    // Detect new hand
+    if (data.gN && data.gN !== socketHandNum) {
+      socketHandNum = data.gN;
+      const dealer = data.dealerID ? getName(data.dealerID) : '?';
+      const sb = data.sBPI ? getName(data.sBPI) : '?';
+      const bb = data.bBPI ? getName(data.bBPI) : '?';
+
+      // Log player stacks at hand start
+      const playerList = [];
+      for (const [id, p] of Object.entries(socketPlayers)) {
+        // Check if player is in game (not folded from previous hand state)
+        playerList.push(`${p.name} (${p.stack})`);
+      }
+      console.log(`[Socket] ===== HAND #${data.gN} =====`);
+      console.log(`[Socket] Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
+      console.log(`[Socket] Stacks: ${playerList.join(', ')}`);
+
+      // Log hole cards if provided
+      if (data.pC) {
+        for (const [id, cardInfo] of Object.entries(data.pC)) {
+          if (cardInfo.cards) {
+            const cards = cardInfo.cards.map(c => c.value).filter(v => v).join(' ');
+            if (cards) {
+              console.log(`[Socket] Your cards: ${cards}`);
+              break; // Only log our own cards
+            }
+          }
+        }
+      }
+
+      socketPrevPGS = {};
+      socketPrevTB = {};
+      socketPrevCards = 0;
+      socketPrevCHB = 0; // Reset for new hand
+    }
+
+    // Detect community cards (street changes)
+    if (data.oTC?.['1']) {
+      const cards = data.oTC['1'];
+      if (cards.length > socketPrevCards) {
+        const streetName = cards.length === 3 ? 'FLOP' : cards.length === 4 ? 'TURN' : cards.length === 5 ? 'RIVER' : 'CARDS';
+        console.log(`[Socket] ${streetName}: ${cards.join(' ')}`);
+        socketPrevCards = cards.length;
+        socketPrevCHB = 0; // Reset for new street - no bets yet
+      }
+    }
+
+    // Detect player actions from pGS changes (fold) - process first to know all-in status
+    if (data.pGS) {
+      for (const [id, status] of Object.entries(data.pGS)) {
+        const prevStatus = socketPrevPGS[id];
+        if (status === 'fold' && prevStatus !== 'fold') {
+          console.log(`[Socket] ACTION: ${getName(id)} FOLD`);
+        }
+        socketPrevPGS[id] = status;
+      }
+    }
+
+    // Detect player actions from tB changes (bet/raise/call/check)
+    if (data.tB) {
+      for (const [id, bet] of Object.entries(data.tB)) {
+        const prevBet = socketPrevTB[id];
+        if (bet === '<D>') {
+          // Bet cleared (street ended)
+          delete socketPrevTB[id];
+          continue;
+        }
+        if (bet === 'check' && prevBet !== 'check') {
+          console.log(`[Socket] ACTION: ${getName(id)} CHECK`);
+        } else if (typeof bet === 'number' && bet !== prevBet) {
+          // Check if this is a blind post (only on new hand, gN present)
+          const isBlindPost = data.gN && (data.sBPI === id || data.bBPI === id);
+          if (isBlindPost) {
+            // Skip blind posts - not player actions
+            socketPrevTB[id] = bet;
+            continue;
+          }
+
+          // Check if player just went all-in (pGS status is 'allIn')
+          const isAllIn = data.pGS?.[id] === 'allIn' || socketPrevPGS[id] === 'allIn';
+          const prevBetNum = typeof prevBet === 'number' ? prevBet : 0;
+
+          // Determine action type:
+          // - ALL-IN: player's pGS status is 'allIn'
+          // - RAISE: bet > previous highest bet (socketPrevCHB)
+          // - BET: first bet on a postflop street (socketPrevCHB was 0)
+          // - CALL: matching existing highest bet
+          if (isAllIn) {
+            // Player went all-in
+            console.log(`[Socket] ACTION: ${getName(id)} ALL-IN ${bet}`);
+          } else if (bet > socketPrevCHB && socketPrevCHB > 0) {
+            // Bet is higher than previous highest = RAISE
+            // (cHB in same message already reflects the new bet, so use socketPrevCHB)
+            console.log(`[Socket] ACTION: ${getName(id)} RAISE ${bet}`);
+          } else if (socketPrevCHB === 0 && prevBetNum === 0) {
+            // No previous bet on this street = first BET (postflop only)
+            console.log(`[Socket] ACTION: ${getName(id)} BET ${bet}`);
+          } else {
+            // Matching existing highest bet = CALL
+            console.log(`[Socket] ACTION: ${getName(id)} CALL ${bet}`);
+          }
+        }
+        socketPrevTB[id] = bet;
+      }
+    }
+
+    // Update socketPrevCHB at the end of processing
+    if (data.cHB !== undefined) {
+      socketPrevCHB = data.cHB;
+    }
+
+    // Detect showdown and winner
+    if (data.gameResult && typeof data.gameResult === 'object' && data.gameResult !== '<D>') {
+      // Check if this is a showdown (sNA contains 'S' at end = Showdown)
+      const isShowdown = data.sNA && data.sNA.endsWith('S');
+
+      // Log revealed cards at showdown
+      if (isShowdown && data.pC) {
+        console.log(`[Socket] === SHOWDOWN ===`);
+        for (const [id, cardInfo] of Object.entries(data.pC)) {
+          if (cardInfo.cards && cardInfo.cards.some(c => c.showing)) {
+            const cards = cardInfo.cards.map(c => c.value).filter(v => v).join(' ');
+            const handName = cardInfo.name1 || '';
+            if (cards) {
+              console.log(`[Socket] SHOW: ${getName(id)} shows ${cards}${handName ? ` (${handName})` : ''}`);
+            }
+          }
+        }
+      }
+
+      // Log winner(s)
+      for (const [id, result] of Object.entries(data.gameResult)) {
+        if (result.gained) {
+          // Check for hand cards in result (e.g., result['1'].hC for pot 1)
+          let handCards = '';
+          if (result['1']?.hC) {
+            handCards = ` with ${result['1'].hC.join(' ')}`;
+          }
+          console.log(`[Socket] WINNER: ${getName(id)} wins ${result.gained}${handCards}`);
+        }
+      }
+    }
+
+    // Detect whose turn
+    if (data.pITT && data.pITT !== null) {
+      console.log(`[Socket] TURN: ${getName(data.pITT)}'s turn`);
+    }
   }
   // ============================================
 

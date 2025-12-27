@@ -4,15 +4,18 @@
 (function() {
   'use strict';
 
-  // Inject the page script via src (to avoid CSP inline script issues)
+  // Inject the main script via src (inline scripts are blocked by CSP)
+  // Use async=false to try to block other scripts until ours loads
   const script = document.createElement('script');
   script.src = chrome.runtime.getURL('inject.js');
+  script.async = false; // Try to load synchronously before other scripts
   script.onload = function() {
     this.remove();
     // Send initial settings after script loads
     sendSettings();
   };
-  (document.head || document.documentElement).appendChild(script);
+  // Inject into documentElement as early as possible (before head exists)
+  (document.documentElement || document.head).appendChild(script);
 
   // Load and send settings to page
   function sendSettings() {
