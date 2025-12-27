@@ -40,6 +40,8 @@
   let socketHandLog = []; // Hand log collected from socket events (for AI)
   let socketBigBlind = 1; // Big blind value for BB conversion
   let displayMode = 'bb'; // 'bb' or 'chips'
+  let socketTurnStartTime = 0; // Timestamp when current player's turn started
+  let socketCurrentTurnPlayer = null; // Player ID whose turn it is
 
   // Format bet value based on displayMode setting
   function formatBet(chips) {
@@ -50,6 +52,20 @@
     const bb = chips / socketBigBlind;
     // Show as integer if whole number, otherwise 1 decimal place
     return bb % 1 === 0 ? `${bb}BB` : `${bb.toFixed(1)}BB`;
+  }
+
+  // Get thinking time for a player and reset if it was their turn
+  function getThinkingTime(playerId) {
+    if (socketCurrentTurnPlayer !== playerId || socketTurnStartTime === 0) {
+      return '';
+    }
+    const elapsed = Date.now() - socketTurnStartTime;
+    const seconds = Math.round(elapsed / 1000);
+    // Reset turn tracking
+    socketTurnStartTime = 0;
+    socketCurrentTurnPlayer = null;
+    // Only show if > 0 seconds
+    return seconds > 0 ? ` (${seconds}s)` : '';
   }
 
   // Format card codes to emoji suits (for AI text output)
@@ -267,8 +283,9 @@
       const cards = data.oTC['1'];
       if (cards.length > socketPrevCards) {
         const streetName = cards.length === 3 ? 'FLOP' : cards.length === 4 ? 'TURN' : cards.length === 5 ? 'RIVER' : 'CARDS';
-        console.log(`[Socket] ${streetName}: ${cards.join(' ')}`);
-        dispatchSocketLog('street', `${streetName}: ${cards.join(' ')}`);
+        const potStr = data.pot ? ` (Pot: ${formatBet(data.pot)})` : '';
+        console.log(`[Socket] ${streetName}: ${cards.join(' ')}${potStr}`);
+        dispatchSocketLog('street', `${streetName}: ${cards.join(' ')}${potStr}`);
         socketPrevCards = cards.length;
         socketPrevCHB = 0; // Reset for new street - no bets yet
       }
@@ -281,8 +298,9 @@
         if (status === 'fold' && prevStatus !== 'fold') {
           const name = getName(id);
           const isMe = id === socketMyId;
-          console.log(`[Socket] ACTION: ${name} FOLD`);
-          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: FOLD`);
+          const thinkTime = getThinkingTime(id);
+          console.log(`[Socket] ACTION: ${name} FOLD${thinkTime}`);
+          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: FOLD${thinkTime}`);
         }
         socketPrevPGS[id] = status;
       }
@@ -300,8 +318,9 @@
         const name = getName(id);
         const isMe = id === socketMyId;
         if (bet === 'check' && prevBet !== 'check') {
-          console.log(`[Socket] ACTION: ${name} CHECK`);
-          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: CHECK`);
+          const thinkTime = getThinkingTime(id);
+          console.log(`[Socket] ACTION: ${name} CHECK${thinkTime}`);
+          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: CHECK${thinkTime}`);
         } else if (typeof bet === 'number' && bet !== prevBet) {
           // Check if this is a blind post (only on new hand, gN present)
           const isBlindPost = data.gN && (data.sBPI === id || data.bBPI === id);
@@ -314,6 +333,7 @@
           // Check if player just went all-in (pGS status is 'allIn')
           const isAllIn = data.pGS?.[id] === 'allIn' || socketPrevPGS[id] === 'allIn';
           const prevBetNum = typeof prevBet === 'number' ? prevBet : 0;
+          const thinkTime = getThinkingTime(id);
 
           // Determine action type:
           // - ALL-IN: player's pGS status is 'allIn'
@@ -330,8 +350,8 @@
           } else {
             actionStr = `CALL ${formatBet(bet)}`;
           }
-          console.log(`[Socket] ACTION: ${name} ${actionStr}`);
-          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: ${actionStr}`);
+          console.log(`[Socket] ACTION: ${name} ${actionStr}${thinkTime}`);
+          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: ${actionStr}${thinkTime}`);
         }
         socketPrevTB[id] = bet;
       }
@@ -427,6 +447,9 @@
       const turnName = getName(data.pITT);
       const isMyTurn = data.pITT === socketMyId;
       console.log(`[Socket] TURN: ${turnName}'s turn`);
+      // Track turn start time for thinking time calculation
+      socketCurrentTurnPlayer = data.pITT;
+      socketTurnStartTime = Date.now();
       // Only add to AI log when it's my turn (other players' turns are redundant - their action follows)
       dispatchSocketLog(isMyTurn ? 'myturn' : 'turn', `${turnName}'s turn`, isMyTurn);
     }
