@@ -235,20 +235,45 @@
       socketPrevCHB = data.cHB;
     }
 
+    // Detect all-in showdown (cards revealed before river is dealt)
+    // sNA "NSAAD" = No Showdown Action All-in Display
+    if (data.sNA === 'NSAAD' && data.pC) {
+      console.log(`[Socket] === ALL-IN SHOWDOWN ===`);
+      for (const [id, cardInfo] of Object.entries(data.pC)) {
+        if (cardInfo.cards && cardInfo.cards.some(c => c.showing)) {
+          const cards = cardInfo.cards.map(c => c.value).filter(v => v).join(' ');
+          const handName = cardInfo.name1 || '';
+          const prob = cardInfo.prob1 ? ` ${cardInfo.prob1}%` : '';
+          if (cards) {
+            console.log(`[Socket] SHOW: ${getName(id)} shows ${cards}${handName ? ` (${handName})` : ''}${prob}`);
+          }
+        }
+      }
+    }
+
     // Detect showdown and winner
     if (data.gameResult && typeof data.gameResult === 'object' && data.gameResult !== '<D>') {
       // Check if this is a showdown (sNA contains 'S' at end = Showdown)
       const isShowdown = data.sNA && data.sNA.endsWith('S');
 
-      // Log revealed cards at showdown
+      // Log revealed cards at showdown (if not already shown via NSAAD)
       if (isShowdown && data.pC) {
-        console.log(`[Socket] === SHOWDOWN ===`);
+        let hasNewCards = false;
         for (const [id, cardInfo] of Object.entries(data.pC)) {
           if (cardInfo.cards && cardInfo.cards.some(c => c.showing)) {
-            const cards = cardInfo.cards.map(c => c.value).filter(v => v).join(' ');
-            const handName = cardInfo.name1 || '';
-            if (cards) {
-              console.log(`[Socket] SHOW: ${getName(id)} shows ${cards}${handName ? ` (${handName})` : ''}`);
+            hasNewCards = true;
+            break;
+          }
+        }
+        if (hasNewCards) {
+          console.log(`[Socket] === SHOWDOWN ===`);
+          for (const [id, cardInfo] of Object.entries(data.pC)) {
+            if (cardInfo.cards && cardInfo.cards.some(c => c.showing)) {
+              const cards = cardInfo.cards.map(c => c.value).filter(v => v).join(' ');
+              const handName = cardInfo.name1 || '';
+              if (cards) {
+                console.log(`[Socket] SHOW: ${getName(id)} shows ${cards}${handName ? ` (${handName})` : ''}`);
+              }
             }
           }
         }
