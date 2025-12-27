@@ -34,6 +34,7 @@
   let socketHandNum = 0;  // Current hand number
   let socketPrevCards = 0; // Previous community card count
   let socketPrevCHB = 0;  // Previous current highest bet (to detect first bet vs call)
+  let socketPrevRabbit = ''; // Previous rabbit cards (to avoid duplicate logs)
 
   // Handle parsed game events from socket
   function handleGameEvent(eventName, data) {
@@ -105,7 +106,14 @@
 
     // Handle direct action events
     if (eventName === 'action') {
-      console.log(`[Socket] ACTION EVENT: ${data?.type || JSON.stringify(data)}`);
+      const actionType = data?.type;
+      if (actionType === 'RUC') {
+        console.log(`[Socket] 🐰 Rabbit hunting requested`);
+      } else if (actionType === 'PLAYER_FOLD') {
+        // Fold action - already handled via gC pGS changes
+      } else if (actionType) {
+        console.log(`[Socket] ACTION EVENT: ${actionType}`);
+      }
       return;
     }
 
@@ -290,6 +298,20 @@
           console.log(`[Socket] WINNER: ${getName(id)} wins ${result.gained}${handCards}`);
         }
       }
+    }
+
+    // Detect rabbit hunting cards (rHC = Run Hunt Cards)
+    if (data.rHC && typeof data.rHC === 'object' && data.rHC !== '<D>') {
+      const rabbitCards = data.rHC['1'];
+      if (rabbitCards && rabbitCards.length > 0) {
+        const rabbitStr = rabbitCards.join(' ');
+        if (rabbitStr !== socketPrevRabbit) {
+          console.log(`[Socket] 🐰 RABBIT: ${rabbitStr}`);
+          socketPrevRabbit = rabbitStr;
+        }
+      }
+    } else if (data.rHC === '<D>') {
+      socketPrevRabbit = ''; // Reset on clear
     }
 
     // Detect whose turn
