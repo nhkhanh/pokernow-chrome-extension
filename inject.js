@@ -2,6 +2,66 @@
 (function() {
   'use strict';
 
+  // ============================================
+  // WEBSOCKET INTERCEPTION FOR GAME EVENTS
+  // ============================================
+  const OriginalWebSocket = window.WebSocket;
+
+  window.WebSocket = function(url, protocols) {
+    const socket = protocols
+      ? new OriginalWebSocket(url, protocols)
+      : new OriginalWebSocket(url);
+
+    // Check if this is PokerNow's game socket
+    if (url && url.includes('pokernow.club')) {
+      console.log('[SoundReplacer] 🔌 Intercepted PokerNow WebSocket:', url);
+
+      // ONLY use addEventListener - don't touch onmessage property!
+      // This is non-destructive and won't interfere with Socket.IO
+      socket.addEventListener('message', (event) => {
+        parseSocketMessage(event.data);
+      });
+    }
+
+    return socket;
+  };
+
+  // Preserve WebSocket static properties and prototype
+  window.WebSocket.prototype = OriginalWebSocket.prototype;
+  window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+  window.WebSocket.OPEN = OriginalWebSocket.OPEN;
+  window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+  window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+
+  // Parse Socket.IO message format
+  function parseSocketMessage(data) {
+    if (typeof data !== 'string') return;
+
+    // Socket.IO uses prefix codes: 0=open, 2=ping, 3=pong, 4=message
+    // Message format: 42["eventName", data] where 4=message, 2=event
+    if (data.startsWith('42')) {
+      try {
+        const jsonStr = data.substring(2);
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed) && parsed.length >= 1) {
+          handleGameEvent(parsed[0], parsed[1]);
+        }
+      } catch (e) {
+        // Not valid JSON, ignore
+      }
+    }
+  }
+
+  // Handle parsed game events from socket
+  function handleGameEvent(eventName, data) {
+    // Log all events for debugging
+    console.log('[Socket]', eventName, data);
+
+    // TODO: Map socket events to game actions
+    // This gives us real-time data without DOM scraping
+  }
+  // ============================================
+
   let customSoundDataUrl = null;
   let customSoundEnabled = true;
   let aiProvider = 'off'; // 'off', 'gemini', 'claude', or 'chatgpt'
