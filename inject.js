@@ -26,6 +26,7 @@
   let playersActedThisRound = new Set(); // Track who has acted in current betting round
   let streetHadBets = false; // Track if any bets were made on current street
   let handLog = []; // Collect log entries for the current hand (for Gemini)
+  let allInPlayers = new Set(); // Track players who are all-in (can't act anymore)
 
   // Dispatch log event to side panel via content script
   function dispatchLogEvent(logType, message) {
@@ -538,6 +539,10 @@
     // Don't re-log players who folded in previous streets
     const status = getTableStatus();
     for (const player of status.players) {
+      // Skip all-in players
+      if (allInPlayers.has(player.name)) continue;
+      // Skip players who already acted
+      if (playersActedThisRound.has(player.name)) continue;
       if (player.isFold) {
         const prevState = previousPlayerStates.get(player.name);
         // Only log if player just folded (wasn't folded before) or is a new player who's folded
@@ -607,14 +612,22 @@
       // Skip the player whose turn it is (they haven't acted yet)
       if (player.hasDecision) continue;
 
-      // Skip all-in players (they can't act)
+      // Skip players who are already all-in from previous action (they can't act anymore)
+      if (allInPlayers.has(player.name)) continue;
+
+      // Check if player is now all-in (stack is 0 after betting)
       const stackValue = parseFloat(player.stack) || 0;
-      if (stackValue === 0 && player.betAmount > 0) continue;
+      const isAllIn = stackValue === 0 && player.betAmount > 0;
 
       if (!prevState) {
         // New player - check if they have an action
         if (player.action && player.action !== 'SB' && player.action !== 'BB') {
-          actedPlayers.push(player);
+          if (isAllIn) {
+            allInPlayers.add(player.name);
+            actedPlayers.push({ ...player, action: `all-in ${player.betText}` });
+          } else {
+            actedPlayers.push(player);
+          }
         }
       } else {
         // Check if state changed
@@ -639,7 +652,11 @@
               }
             }
 
-            if (someoneElseHadHigherBet) {
+            // Track all-in
+            if (isAllIn) {
+              allInPlayers.add(player.name);
+              actedPlayers.push({ ...player, action: `all-in ${player.betText}` });
+            } else if (someoneElseHadHigherBet) {
               // Player matched someone else's bet = CALL
               actedPlayers.push({ ...player, action: `call ${player.betText}` });
             } else {
@@ -652,13 +669,15 @@
             if (player.action !== 'SB' && player.action !== 'BB') {
               actedPlayers.push(player);
             }
-          } else if (isNewCheck) {
+          } else if (isNewCheck && !isAllIn && !playersActedThisRound.has(player.name)) {
             // Check action - rawAction changed but action might not have
+            // Skip if player is all-in (can't check) or already acted this round
             actedPlayers.push({ ...player, action: 'check' });
           }
-        } else if (turnJustEnded && !player.isFold && player.betAmount === prevState.betAmount) {
+        } else if (turnJustEnded && !player.isFold && player.betAmount === prevState.betAmount && !isAllIn && !playersActedThisRound.has(player.name)) {
           // Player's turn ended, they didn't fold or bet -> they checked
           // This catches cases where rawAction 'check' is missed
+          // Skip if player is all-in (can't check) or already acted this round
           actedPlayers.push({ ...player, action: 'check' });
         }
       }
@@ -783,6 +802,8 @@
       if (isNewGame) {
         // Before clearing state, check for any missed folds from the previous hand
         for (const player of status.players) {
+          // Skip all-in players
+          if (allInPlayers.has(player.name)) continue;
           const prevState = previousPlayerStates.get(player.name);
           if (prevState && player.isFold && !prevState.isFold && !player.isYou) {
             if (!playersActedThisRound.has(player.name)) {
@@ -798,6 +819,7 @@
         actionOrder = []; // Reset action order
         playersActedThisRound.clear(); // Reset acted players
         streetHadBets = false; // Reset bet tracking
+        allInPlayers.clear(); // Reset all-in tracking for new hand
       }
 
       // Prepare street info if new street is dealt (but don't log yet)
@@ -809,6 +831,8 @@
 
         // First, check for any missed folds (players who folded but weren't logged)
         for (const player of status.players) {
+          // Skip all-in players
+          if (allInPlayers.has(player.name)) continue;
           const prevState = previousPlayerStates.get(player.name);
           if (prevState && player.isFold && !prevState.isFold && !player.isYou) {
             // Player folded but we didn't log it
@@ -834,15 +858,22 @@
             const prevBet = prevState.betAmount;
             const prevAction = prevState.action;
 
+            // Skip all-in players (already logged their action)
+            if (allInPlayers.has(player.name)) continue;
+
             // Handle BB check (preflop only)
             if (prevAction === 'BB' && lastTableCardCount === 0) {
+              // Skip if already acted
+              if (playersActedThisRound.has(player.name)) continue;
               // BB checked if max bet was 1BB (no raise)
               if (maxPrevBet === 1) {
                 dispatchLogEvent('action', `${player.name}: CHECK`);
+                playersActedThisRound.add(player.name);
               }
               // BB called if there was a raise and they're still in
               else if (prevBet < maxPrevBet) {
                 dispatchLogEvent('action', `${player.name}: CALL ${maxPrevBet}BB`);
+                playersActedThisRound.add(player.name);
               }
               continue;
             }
@@ -850,12 +881,24 @@
             // Skip SB
             if (prevAction === 'SB') continue;
 
-            // Skip players who were already at the max bet (they were the raiser)
-            if (prevBet === maxPrevBet) continue;
+            // Skip players who raised/bet (they're the aggressor, not a caller)
+            const isAggressor = prevAction && (prevAction.startsWith('raise') || prevAction.startsWith('bet') || prevAction.startsWith('all-in'));
+            if (isAggressor) continue;
+
+            // Skip players who already acted this round
+            if (playersActedThisRound.has(player.name)) continue;
+
+            // If they had a bet at max level but weren't the aggressor, they called
+            if (prevBet === maxPrevBet && maxPrevBet > 0) {
+              dispatchLogEvent('action', `${player.name}: CALL ${maxPrevBet}BB`);
+              playersActedThisRound.add(player.name);
+              continue;
+            }
 
             // If they had a bet less than max, they must have called
             if (prevBet > 0 && prevBet < maxPrevBet) {
               dispatchLogEvent('action', `${player.name}: CALL ${maxPrevBet}BB`);
+              playersActedThisRound.add(player.name);
             }
           }
         }
@@ -864,6 +907,8 @@
         if (lastTableCardCount > 0 && !streetHadBets) {
           // Postflop street where everyone checked
           for (const playerName of actionOrder) {
+            // Skip all-in players (they can't check)
+            if (allInPlayers.has(playerName)) continue;
             if (!playersActedThisRound.has(playerName)) {
               const player = status.players.find(p => p.name === playerName);
               if (player && !player.isFold) {
@@ -914,6 +959,19 @@
         // Highlight and log all actions BEFORE logging the street
         // This ensures actions from the previous street are logged before the new street
         const actedPlayers = highlightLastAction(status);
+
+        // Sort acted players by action order (position) before logging
+        // This ensures actions are logged in correct poker order, not detection order
+        actedPlayers.sort((a, b) => {
+          const aIndex = actionOrder.indexOf(a.name);
+          const bIndex = actionOrder.indexOf(b.name);
+          // Players not in actionOrder go to the end
+          if (aIndex === -1 && bIndex === -1) return 0;
+          if (aIndex === -1) return 1;
+          if (bIndex === -1) return -1;
+          return aIndex - bIndex;
+        });
+
         for (const player of actedPlayers) {
           logPlayerAction(player, status);
         }
