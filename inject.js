@@ -414,8 +414,8 @@
       console.log('[SoundReplacer] AI mode is manual - skipping automatic send');
       return;
     }
-    if (handLog.length === 0) return;
-    const logText = handLog.join('\n');
+    if (socketHandLog.length === 0) return;
+    const logText = socketHandLog.join('\n');
     window.dispatchEvent(new CustomEvent('POKERNOW_SEND_TO_AI', {
       detail: { provider: aiProvider, handLog: logText }
     }));
@@ -487,11 +487,11 @@
       console.log('[SoundReplacer] Manual AI request ignored - AI provider is off');
       return;
     }
-    if (handLog.length === 0) {
+    if (socketHandLog.length === 0) {
       console.log('[SoundReplacer] Manual AI request ignored - no hand log');
       return;
     }
-    const logText = handLog.join('\n');
+    const logText = socketHandLog.join('\n');
     window.dispatchEvent(new CustomEvent('POKERNOW_SEND_TO_AI', {
       detail: { provider: aiProvider, handLog: logText }
     }));
