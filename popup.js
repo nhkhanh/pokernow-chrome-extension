@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const aiProvider = document.getElementById('aiProvider');
   const aiModeRow = document.getElementById('aiModeRow');
   const aiMode = document.getElementById('aiMode');
+  const displayMode = document.getElementById('displayMode');
   const soundFile = document.getElementById('soundFile');
   const fileBtn = document.getElementById('fileBtn');
   const currentSound = document.getElementById('currentSound');
@@ -21,10 +22,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Load saved settings
-  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider', 'aiMode'], (result) => {
+  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
     enableToggle.checked = result.enabled !== false;
     aiProvider.value = result.aiProvider || 'off';
     aiMode.value = result.aiMode || 'auto';
+    displayMode.value = result.displayMode || 'bb';
     updateAiModeVisibility();
 
     if (result.customSound && result.soundFileName) {
@@ -61,6 +63,17 @@ document.addEventListener('DOMContentLoaded', () => {
         'manual': 'Click "Ask AI" in side panel for analysis'
       };
       showStatus(messages[aiMode.value], 'success');
+    });
+  });
+
+  // Display Mode dropdown
+  displayMode.addEventListener('change', () => {
+    chrome.storage.local.set({ displayMode: displayMode.value }, () => {
+      const messages = {
+        'bb': 'Showing bet values in BB',
+        'chips': 'Showing bet values in chips'
+      };
+      showStatus(messages[displayMode.value], 'success');
     });
   });
 

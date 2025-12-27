@@ -29,6 +29,7 @@
 
   // Track socket-based game state
   let socketPlayers = {}; // playerId -> {name, stack}
+  let socketSeats = {};   // playerId -> seat number (for ordering)
   let socketPrevPGS = {}; // Previous player game status
   let socketPrevTB = {};  // Previous table bets
   let socketHandNum = 0;  // Current hand number
@@ -37,17 +38,60 @@
   let socketPrevRabbit = ''; // Previous rabbit cards (to avoid duplicate logs)
   let socketMyId = null;  // Current player's ID
   let socketHandLog = []; // Hand log collected from socket events (for AI)
+  let socketBigBlind = 1; // Big blind value for BB conversion
+  let displayMode = 'bb'; // 'bb' or 'chips'
+
+  // Format bet value based on displayMode setting
+  function formatBet(chips) {
+    if (displayMode === 'chips') {
+      return chips;
+    }
+    // Convert to BB
+    const bb = chips / socketBigBlind;
+    // Show as integer if whole number, otherwise 1 decimal place
+    return bb % 1 === 0 ? `${bb}BB` : `${bb.toFixed(1)}BB`;
+  }
+
+  // Format card codes to emoji suits (for AI text output)
+  // Converts "Ah Kc" to "A♥ K♣", only in card contexts
+  function formatCardsText(text) {
+    if (!text) return text;
+    const suitMap = { h: '♥', d: '♦', c: '♣', s: '♠' };
+    const cardPattern = /\b(10|[AKQJT2-9])([hdcs])\b/gi;
+    // Only format cards after these context prefixes
+    const contextPrefixes = ['Your cards:', 'FLOP:', 'TURN:', 'RIVER:', 'BOARD:', 'CARDS:', 'shows ', 'with ', 'RABBIT:'];
+    let formatted = text;
+    for (const prefix of contextPrefixes) {
+      const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`(${escapedPrefix}\\s*)(.+)`, 'i');
+      formatted = formatted.replace(pattern, (match, pre, cards) => {
+        const formattedCards = cards.replace(cardPattern, (m, rank, suit) => {
+          return rank.toUpperCase() + suitMap[suit.toLowerCase()];
+        });
+        return pre + formattedCards;
+      });
+    }
+    return formatted;
+  }
 
   // Dispatch socket log event to side panel
-  function dispatchSocketLog(logType, message) {
+  // Set addToAILog=false to skip adding to AI hand log (e.g., for other players' turns)
+  function dispatchSocketLog(logType, message, addToAILog = true) {
     window.dispatchEvent(new CustomEvent('POKERNOW_GAME_LOG', {
       detail: { logType, message }
     }));
-    // Collect in socketHandLog for AI
-    if (logType === 'newgame') {
-      socketHandLog = [message];
-    } else {
-      socketHandLog.push(message);
+    // Collect in socketHandLog for AI (with card formatting)
+    if (addToAILog) {
+      const formattedMsg = formatCardsText(message);
+      if (logType === 'newgame') {
+        socketHandLog = [formattedMsg];
+      } else if (logType === 'myturn') {
+        // Remove previous turn entries - only keep the latest/current turn
+        socketHandLog = socketHandLog.filter(entry => !entry.endsWith("'s turn"));
+        socketHandLog.push(formattedMsg);
+      } else {
+        socketHandLog.push(formattedMsg);
+      }
     }
   }
 
@@ -58,19 +102,34 @@
       const gs = data.gameState;
       if (!gs) return;
 
-      // Track current player ID
+      // Track current player ID and big blind
       socketMyId = data.currentPlayer?.id;
+      socketBigBlind = gs.bigBlind || 1;
 
       // Extract player info with stacks
       if (gs.players) {
         socketPlayers = {};
-        const playerList = [];
         for (const [id, p] of Object.entries(gs.players)) {
           socketPlayers[id] = { name: p.name, stack: p.stack };
-          if (p.status === 'inGame') {
-            playerList.push(`${p.name} (${p.stack})`);
-          }
         }
+      }
+
+      // Extract seat positions for ordering
+      if (gs.seats) {
+        socketSeats = {};
+        for (const [seatNum, playerId] of gs.seats) {
+          socketSeats[playerId] = seatNum;
+        }
+      }
+
+      // Log game info with players sorted by seat
+      if (gs.players) {
+        const inGameIds = Object.entries(gs.players)
+          .filter(([, p]) => p.status === 'inGame')
+          .map(([id]) => id)
+          .sort((a, b) => (socketSeats[a] || 99) - (socketSeats[b] || 99));
+        const playerList = inGameIds.map(id => `${socketPlayers[id].name} (${formatBet(socketPlayers[id].stack)})`);
+
         console.log('[Socket] === GAME INFO ===');
         console.log(`[Socket] Blinds: ${gs.smallBlind}/${gs.bigBlind}`);
         console.log(`[Socket] Players: ${playerList.join(', ')}`);
@@ -153,6 +212,13 @@
       }
     }
 
+    // Update seat positions if provided
+    if (data.seats) {
+      for (const [seatNum, playerId] of data.seats) {
+        socketSeats[playerId] = seatNum;
+      }
+    }
+
     const getName = (id) => socketPlayers[id]?.name || id;
 
     // Detect new hand
@@ -162,15 +228,12 @@
       const sb = data.sBPI ? getName(data.sBPI) : '?';
       const bb = data.bBPI ? getName(data.bBPI) : '?';
 
-      // Log player stacks at hand start (only players in this hand via iHPI)
-      const playerList = [];
-      const inHandPlayers = data.iHPI || [];
-      for (const id of inHandPlayers) {
-        const p = socketPlayers[id];
-        if (p) {
-          playerList.push(`${p.name} (${p.stack})`);
-        }
-      }
+      // Log player stacks at hand start (only players in this hand via iHPI), sorted by seat
+      const inHandPlayers = (data.iHPI || []).slice().sort((a, b) => (socketSeats[a] || 99) - (socketSeats[b] || 99));
+      const playerList = inHandPlayers
+        .map(id => socketPlayers[id])
+        .filter(p => p)
+        .map(p => `${p.name} (${formatBet(p.stack)})`);
       console.log(`[Socket] ===== HAND #${data.gN} =====`);
       console.log(`[Socket] Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
       console.log(`[Socket] Stacks: ${playerList.join(', ')}`);
@@ -259,13 +322,13 @@
           // - CALL: matching existing highest bet
           let actionStr;
           if (isAllIn) {
-            actionStr = `ALL-IN ${bet}`;
+            actionStr = `ALL-IN ${formatBet(bet)}`;
           } else if (bet > socketPrevCHB && socketPrevCHB > 0) {
-            actionStr = `RAISE ${bet}`;
+            actionStr = `RAISE ${formatBet(bet)}`;
           } else if (socketPrevCHB === 0 && prevBetNum === 0) {
-            actionStr = `BET ${bet}`;
+            actionStr = `BET ${formatBet(bet)}`;
           } else {
-            actionStr = `CALL ${bet}`;
+            actionStr = `CALL ${formatBet(bet)}`;
           }
           console.log(`[Socket] ACTION: ${name} ${actionStr}`);
           dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: ${actionStr}`);
@@ -337,7 +400,7 @@
           if (result['1']?.hC) {
             handCards = ` with ${result['1'].hC.join(' ')}`;
           }
-          const winMsg = `${getName(id)} wins ${result.gained}${handCards}`;
+          const winMsg = `${getName(id)} wins ${formatBet(result.gained)}${handCards}`;
           console.log(`[Socket] WINNER: ${winMsg}`);
           dispatchSocketLog('winner', winMsg);
         }
@@ -364,7 +427,8 @@
       const turnName = getName(data.pITT);
       const isMyTurn = data.pITT === socketMyId;
       console.log(`[Socket] TURN: ${turnName}'s turn`);
-      dispatchSocketLog(isMyTurn ? 'myturn' : 'turn', `${turnName}'s turn`);
+      // Only add to AI log when it's my turn (other players' turns are redundant - their action follows)
+      dispatchSocketLog(isMyTurn ? 'myturn' : 'turn', `${turnName}'s turn`, isMyTurn);
     }
   }
   // ============================================
@@ -478,7 +542,8 @@
     customSoundEnabled = e.detail.enabled;
     aiProvider = e.detail.aiProvider || 'off';
     aiMode = e.detail.aiMode || 'auto';
-    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, enabled: customSoundEnabled, aiProvider, aiMode });
+    displayMode = e.detail.displayMode || 'bb';
+    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, enabled: customSoundEnabled, aiProvider, aiMode, displayMode });
   });
 
   // Listen for manual AI request from side panel
