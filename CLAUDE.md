@@ -43,3 +43,4 @@ Chrome extension for PokerNow.club that provides:
 ## Git
 - Remote: https://nhkhanh@github.com/nhkhanh/pokernow-chrome-extension.git
 - Do not include Claude Code attribution in commits
+- Do not git commit until user explicitly says so

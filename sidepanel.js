@@ -39,14 +39,35 @@
     }
   }
 
-  // Format cards with four colors
+  // Format cards with four colors and suit emojis
+  // Only format cards in specific contexts where cards appear (not player names)
   function formatCards(text) {
     if (!text) return text;
-    return text
-      .replace(/([AKQJT0-9]+)(♥)/g, '<span class="cards card-heart">$1$2</span>')
-      .replace(/([AKQJT0-9]+)(♦)/g, '<span class="cards card-diamond">$1$2</span>')
-      .replace(/([AKQJT0-9]+)(♣)/g, '<span class="cards card-club">$1$2</span>')
-      .replace(/([AKQJT0-9]+)(♠)/g, '<span class="cards card-spade">$1$2</span>');
+
+    const suitMap = { h: '♥', d: '♦', c: '♣', s: '♠' };
+    const cardPattern = /\b(10|[AKQJT2-9])([hdcs])\b/gi;
+
+    // Only format cards after these context prefixes
+    const contextPrefixes = ['Your cards:', 'FLOP:', 'TURN:', 'RIVER:', 'BOARD:', 'CARDS:', 'shows ', 'with ', 'RABBIT:'];
+
+    let formatted = text;
+    for (const prefix of contextPrefixes) {
+      const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`(${escapedPrefix}\\s*)(.+)`, 'i');
+      formatted = formatted.replace(pattern, (match, pre, cards) => {
+        const formattedCards = cards.replace(cardPattern, (m, rank, suit) => {
+          return rank.toUpperCase() + suitMap[suit.toLowerCase()];
+        });
+        return pre + formattedCards;
+      });
+    }
+
+    // Apply colors to emoji suits (no word boundary - emoji breaks \b)
+    return formatted
+      .replace(/(10|[AKQJT2-9])(♥)/g, '<span class="cards card-heart">$1$2</span>')
+      .replace(/(10|[AKQJT2-9])(♦)/g, '<span class="cards card-diamond">$1$2</span>')
+      .replace(/(10|[AKQJT2-9])(♣)/g, '<span class="cards card-club">$1$2</span>')
+      .replace(/(10|[AKQJT2-9])(♠)/g, '<span class="cards card-spade">$1$2</span>');
   }
 
   // Get current time string
@@ -60,22 +81,36 @@
     });
   }
 
+  // Extract player name from message (e.g., "PlayerName: FOLD" -> "PlayerName")
+  function extractPlayerName(message) {
+    const match = message.match(/^([^:]+):/);
+    return match ? match[1].trim() : null;
+  }
+
   // Add a log entry
   function addLogEntry(type, message) {
     removeEmptyState();
 
-    // If this is my action, replace the last "turn" entry
-    if (type === 'myaction') {
-      const turnEntries = logContainer.querySelectorAll('.log-entry.turn');
-      const lastTurn = turnEntries[turnEntries.length - 1];
-      if (lastTurn) {
-        const content = lastTurn.querySelector('.label');
-        content.innerHTML = formatCards(message);
-        lastTurn.className = 'log-entry action';
-        logContainer.scrollTop = logContainer.scrollHeight;
-        return;
+    // If this is an action (my or other), replace matching turn entry
+    if (type === 'myaction' || type === 'action') {
+      const playerName = extractPlayerName(message);
+      if (playerName) {
+        // Find turn entries and look for one matching this player
+        const turnEntries = logContainer.querySelectorAll('.log-entry.turn, .log-entry.myturn');
+        for (let i = turnEntries.length - 1; i >= 0; i--) {
+          const turnEntry = turnEntries[i];
+          const turnLabel = turnEntry.querySelector('.label')?.textContent || '';
+          // Check if turn entry is for this player (e.g., "PlayerName's turn")
+          if (turnLabel.includes(playerName)) {
+            const content = turnEntry.querySelector('.label');
+            content.innerHTML = formatCards(message);
+            turnEntry.className = 'log-entry action';
+            logContainer.scrollTop = logContainer.scrollHeight;
+            return;
+          }
+        }
       }
-      // Fallback: add as regular action if no turn entry found
+      // Fallback: add as regular action if no matching turn entry found
       type = 'action';
     }
 

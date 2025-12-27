@@ -35,6 +35,21 @@
   let socketPrevCards = 0; // Previous community card count
   let socketPrevCHB = 0;  // Previous current highest bet (to detect first bet vs call)
   let socketPrevRabbit = ''; // Previous rabbit cards (to avoid duplicate logs)
+  let socketMyId = null;  // Current player's ID
+  let socketHandLog = []; // Hand log collected from socket events (for AI)
+
+  // Dispatch socket log event to side panel
+  function dispatchSocketLog(logType, message) {
+    window.dispatchEvent(new CustomEvent('POKERNOW_GAME_LOG', {
+      detail: { logType, message }
+    }));
+    // Collect in socketHandLog for AI
+    if (logType === 'newgame') {
+      socketHandLog = [message];
+    } else {
+      socketHandLog.push(message);
+    }
+  }
 
   // Handle parsed game events from socket
   function handleGameEvent(eventName, data) {
@@ -42,6 +57,9 @@
       // Initial game state - extract full game info
       const gs = data.gameState;
       if (!gs) return;
+
+      // Track current player ID
+      socketMyId = data.currentPlayer?.id;
 
       // Extract player info with stacks
       if (gs.players) {
@@ -56,17 +74,22 @@
         console.log('[Socket] === GAME INFO ===');
         console.log(`[Socket] Blinds: ${gs.smallBlind}/${gs.bigBlind}`);
         console.log(`[Socket] Players: ${playerList.join(', ')}`);
+
+        // Dispatch to side panel
+        dispatchSocketLog('status', `=== GAME INFO ===`);
+        dispatchSocketLog('info', `Blinds: ${gs.smallBlind}/${gs.bigBlind}`);
+        dispatchSocketLog('info', `Players: ${playerList.join(', ')}`);
       }
 
       // Log current player's hole cards
-      const myId = data.currentPlayer?.id;
-      if (myId && gs.pC?.[myId]?.cards) {
-        const myCards = gs.pC[myId].cards
+      if (socketMyId && gs.pC?.[socketMyId]?.cards) {
+        const myCards = gs.pC[socketMyId].cards
           .map(c => c.value)
           .filter(v => v)
           .join(' ');
         if (myCards) {
           console.log(`[Socket] Your cards: ${myCards}`);
+          dispatchSocketLog('cards', `Your cards: ${myCards}`);
         }
       }
 
@@ -139,15 +162,22 @@
       const sb = data.sBPI ? getName(data.sBPI) : '?';
       const bb = data.bBPI ? getName(data.bBPI) : '?';
 
-      // Log player stacks at hand start
+      // Log player stacks at hand start (only players in this hand via iHPI)
       const playerList = [];
-      for (const [id, p] of Object.entries(socketPlayers)) {
-        // Check if player is in game (not folded from previous hand state)
-        playerList.push(`${p.name} (${p.stack})`);
+      const inHandPlayers = data.iHPI || [];
+      for (const id of inHandPlayers) {
+        const p = socketPlayers[id];
+        if (p) {
+          playerList.push(`${p.name} (${p.stack})`);
+        }
       }
       console.log(`[Socket] ===== HAND #${data.gN} =====`);
       console.log(`[Socket] Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
       console.log(`[Socket] Stacks: ${playerList.join(', ')}`);
+
+      // Dispatch to side panel
+      dispatchSocketLog('newgame', `Hand #${data.gN} - Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
+      dispatchSocketLog('info', `Stacks: ${playerList.join(', ')}`);
 
       // Log hole cards if provided
       if (data.pC) {
@@ -156,6 +186,7 @@
             const cards = cardInfo.cards.map(c => c.value).filter(v => v).join(' ');
             if (cards) {
               console.log(`[Socket] Your cards: ${cards}`);
+              dispatchSocketLog('cards', `Your cards: ${cards}`);
               break; // Only log our own cards
             }
           }
@@ -174,6 +205,7 @@
       if (cards.length > socketPrevCards) {
         const streetName = cards.length === 3 ? 'FLOP' : cards.length === 4 ? 'TURN' : cards.length === 5 ? 'RIVER' : 'CARDS';
         console.log(`[Socket] ${streetName}: ${cards.join(' ')}`);
+        dispatchSocketLog('street', `${streetName}: ${cards.join(' ')}`);
         socketPrevCards = cards.length;
         socketPrevCHB = 0; // Reset for new street - no bets yet
       }
@@ -184,7 +216,10 @@
       for (const [id, status] of Object.entries(data.pGS)) {
         const prevStatus = socketPrevPGS[id];
         if (status === 'fold' && prevStatus !== 'fold') {
-          console.log(`[Socket] ACTION: ${getName(id)} FOLD`);
+          const name = getName(id);
+          const isMe = id === socketMyId;
+          console.log(`[Socket] ACTION: ${name} FOLD`);
+          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: FOLD`);
         }
         socketPrevPGS[id] = status;
       }
@@ -199,8 +234,11 @@
           delete socketPrevTB[id];
           continue;
         }
+        const name = getName(id);
+        const isMe = id === socketMyId;
         if (bet === 'check' && prevBet !== 'check') {
-          console.log(`[Socket] ACTION: ${getName(id)} CHECK`);
+          console.log(`[Socket] ACTION: ${name} CHECK`);
+          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: CHECK`);
         } else if (typeof bet === 'number' && bet !== prevBet) {
           // Check if this is a blind post (only on new hand, gN present)
           const isBlindPost = data.gN && (data.sBPI === id || data.bBPI === id);
@@ -219,20 +257,18 @@
           // - RAISE: bet > previous highest bet (socketPrevCHB)
           // - BET: first bet on a postflop street (socketPrevCHB was 0)
           // - CALL: matching existing highest bet
+          let actionStr;
           if (isAllIn) {
-            // Player went all-in
-            console.log(`[Socket] ACTION: ${getName(id)} ALL-IN ${bet}`);
+            actionStr = `ALL-IN ${bet}`;
           } else if (bet > socketPrevCHB && socketPrevCHB > 0) {
-            // Bet is higher than previous highest = RAISE
-            // (cHB in same message already reflects the new bet, so use socketPrevCHB)
-            console.log(`[Socket] ACTION: ${getName(id)} RAISE ${bet}`);
+            actionStr = `RAISE ${bet}`;
           } else if (socketPrevCHB === 0 && prevBetNum === 0) {
-            // No previous bet on this street = first BET (postflop only)
-            console.log(`[Socket] ACTION: ${getName(id)} BET ${bet}`);
+            actionStr = `BET ${bet}`;
           } else {
-            // Matching existing highest bet = CALL
-            console.log(`[Socket] ACTION: ${getName(id)} CALL ${bet}`);
+            actionStr = `CALL ${bet}`;
           }
+          console.log(`[Socket] ACTION: ${name} ${actionStr}`);
+          dispatchSocketLog(isMe ? 'myaction' : 'action', `${name}: ${actionStr}`);
         }
         socketPrevTB[id] = bet;
       }
@@ -247,13 +283,16 @@
     // sNA "NSAAD" = No Showdown Action All-in Display
     if (data.sNA === 'NSAAD' && data.pC) {
       console.log(`[Socket] === ALL-IN SHOWDOWN ===`);
+      dispatchSocketLog('showdown', '=== ALL-IN SHOWDOWN ===');
       for (const [id, cardInfo] of Object.entries(data.pC)) {
         if (cardInfo.cards && cardInfo.cards.some(c => c.showing)) {
           const cards = cardInfo.cards.map(c => c.value).filter(v => v).join(' ');
           const handName = cardInfo.name1 || '';
           const prob = cardInfo.prob1 ? ` ${cardInfo.prob1}%` : '';
           if (cards) {
-            console.log(`[Socket] SHOW: ${getName(id)} shows ${cards}${handName ? ` (${handName})` : ''}${prob}`);
+            const showMsg = `${getName(id)} shows ${cards}${handName ? ` (${handName})` : ''}${prob}`;
+            console.log(`[Socket] SHOW: ${showMsg}`);
+            dispatchSocketLog('showdown', showMsg);
           }
         }
       }
@@ -275,12 +314,15 @@
         }
         if (hasNewCards) {
           console.log(`[Socket] === SHOWDOWN ===`);
+          dispatchSocketLog('showdown', '=== SHOWDOWN ===');
           for (const [id, cardInfo] of Object.entries(data.pC)) {
             if (cardInfo.cards && cardInfo.cards.some(c => c.showing)) {
               const cards = cardInfo.cards.map(c => c.value).filter(v => v).join(' ');
               const handName = cardInfo.name1 || '';
               if (cards) {
-                console.log(`[Socket] SHOW: ${getName(id)} shows ${cards}${handName ? ` (${handName})` : ''}`);
+                const showMsg = `${getName(id)} shows ${cards}${handName ? ` (${handName})` : ''}`;
+                console.log(`[Socket] SHOW: ${showMsg}`);
+                dispatchSocketLog('showdown', showMsg);
               }
             }
           }
@@ -295,7 +337,9 @@
           if (result['1']?.hC) {
             handCards = ` with ${result['1'].hC.join(' ')}`;
           }
-          console.log(`[Socket] WINNER: ${getName(id)} wins ${result.gained}${handCards}`);
+          const winMsg = `${getName(id)} wins ${result.gained}${handCards}`;
+          console.log(`[Socket] WINNER: ${winMsg}`);
+          dispatchSocketLog('winner', winMsg);
         }
       }
     }
@@ -307,6 +351,7 @@
         const rabbitStr = rabbitCards.join(' ');
         if (rabbitStr !== socketPrevRabbit) {
           console.log(`[Socket] 🐰 RABBIT: ${rabbitStr}`);
+          dispatchSocketLog('info', `🐰 RABBIT: ${rabbitStr}`);
           socketPrevRabbit = rabbitStr;
         }
       }
@@ -316,7 +361,10 @@
 
     // Detect whose turn
     if (data.pITT && data.pITT !== null) {
-      console.log(`[Socket] TURN: ${getName(data.pITT)}'s turn`);
+      const turnName = getName(data.pITT);
+      const isMyTurn = data.pITT === socketMyId;
+      console.log(`[Socket] TURN: ${turnName}'s turn`);
+      dispatchSocketLog(isMyTurn ? 'myturn' : 'turn', `${turnName}'s turn`);
     }
   }
   // ============================================
@@ -348,11 +396,10 @@
   let allInPlayers = new Set(); // Track players who are all-in (can't act anymore)
 
   // Dispatch log event to side panel via content script
+  // DISABLED: DOM-based logging disabled - socket events provide game info
   function dispatchLogEvent(logType, message) {
-    window.dispatchEvent(new CustomEvent('POKERNOW_GAME_LOG', {
-      detail: { logType, message }
-    }));
-    // Also collect in handLog for Gemini (reset on new hand)
+    // No-op: socket-based logging (dispatchSocketLog) handles side panel updates
+    // Only collect in handLog for AI (if needed)
     if (logType === 'newgame') {
       handLog = [message];
     } else {
@@ -544,20 +591,6 @@
     
     if (!value || !suit) return null;
     return value + suit;
-  }
-
-  // Get my hole cards
-  function getMyCards() {
-    const myPlayer = document.querySelector('.table-player.you-player');
-    if (!myPlayer) return [];
-    
-    const cardContainers = myPlayer.querySelectorAll('.table-player-cards .card-container');
-    const cards = [];
-    cardContainers.forEach(container => {
-      const card = parseCard(container);
-      if (card) cards.push(card);
-    });
-    return cards;
   }
 
   // Get community cards
@@ -809,41 +842,9 @@
     return status;
   }
 
-  // Log table status
-  function logTableStatus(trigger) {
-    const status = getTableStatus();
-    const myCards = getMyCards();
-    const tableCards = getTableCards();
-
-    // Determine street
-    let street = 'preflop';
-    if (tableCards.length === 3) street = 'flop';
-    else if (tableCards.length === 4) street = 'turn';
-    else if (tableCards.length === 5) street = 'river';
-
-    // Dispatch to side panel
-    if (trigger === 'new game') {
-      dispatchLogEvent('newgame', '--- NEW HAND ---');
-      // Find BTN player
-      const dealerSeat = parseInt(status.dealerPosition) || 0;
-      const btnPlayer = status.players.find(p => p.seat === dealerSeat);
-      const btnName = btnPlayer ? btnPlayer.name : 'Unknown';
-      // Show BTN, SB and BB
-      if (status.sbPlayer && status.bbPlayer) {
-        dispatchLogEvent('status', `BTN: ${btnName} | SB: ${status.sbPlayer} | BB: ${status.bbPlayer}`);
-      } else {
-        dispatchLogEvent('status', `BTN: ${btnName}`);
-      }
-      // Show active player stacks
-      const activePlayers = status.players.filter(p => !p.isFold && !p.isOffline && p.stack);
-      const stacksStr = activePlayers.map(p => `${p.name}: ${p.stack}`).join(' | ');
-      dispatchLogEvent('status', stacksStr);
-      const heroName = status.youPlayer || 'Unknown';
-      dispatchLogEvent('status', `Hero (${heroName}): ${myCards.length > 0 ? myCards.join(' ') : 'hidden'}`);
-    }
-    dispatchLogEvent('pot', `Pot: ${status.pot}`);
-
-    return status;
+  // Get table status (DOM-based logging disabled - socket provides game info)
+  function logTableStatus() {
+    return getTableStatus();
   }
 
   // Detect and log hand winners
@@ -1311,7 +1312,7 @@
       
       // Only trigger when turn STARTS (transitions from not-my-turn to my-turn)
       if (isMyTurn && !wasMyTurn) {
-        dispatchLogEvent('turn', 'YOUR TURN');
+        // DOM-based turn logging disabled - socket provides this via pITT
         isMyTurnPending = true;
 
         // Send hand log to AI for analysis

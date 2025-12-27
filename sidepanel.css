@@ -128,6 +128,53 @@ body {
   color: #64748b;
 }
 
+.log-entry.info {
+  border-left-color: #64748b;
+}
+
+.log-entry.info .label {
+  color: #64748b;
+}
+
+.log-entry.cards {
+  border-left-color: #9333ea;
+  background: #faf5ff;
+}
+
+.log-entry.cards .label {
+  color: #9333ea;
+  font-weight: 600;
+}
+
+.log-entry.myturn {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+.log-entry.myturn .label {
+  color: #dc2626;
+  font-weight: bold;
+}
+
+.log-entry.showdown {
+  border-left-color: #ea580c;
+  background: #fff7ed;
+}
+
+.log-entry.showdown .label {
+  color: #ea580c;
+}
+
+.log-entry.winner {
+  border-left-color: #eab308;
+  background: #fefce8;
+}
+
+.log-entry.winner .label {
+  color: #ca8a04;
+  font-weight: 600;
+}
+
 .cards {
   font-family: 'Segoe UI Symbol', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
 }
