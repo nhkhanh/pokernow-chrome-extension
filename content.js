@@ -17,12 +17,16 @@
   // Inject into documentElement as early as possible (before head exists)
   (document.documentElement || document.head).appendChild(script);
 
+  // Default sound URL
+  const defaultSoundUrl = chrome.runtime.getURL('opening-bell-421471.mp3');
+
   // Load and send settings to page
   function sendSettings() {
     chrome.storage.local.get(['customSound', 'enabled', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
       window.dispatchEvent(new CustomEvent('POKERNOW_SOUND_SETTINGS', {
         detail: {
           customSound: result.customSound || null,
+          defaultSound: defaultSoundUrl,
           enabled: result.enabled !== false,
           aiProvider: result.aiProvider || 'off',
           aiMode: result.aiMode || 'auto',

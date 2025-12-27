@@ -457,6 +457,7 @@
   // ============================================
 
   let customSoundDataUrl = null;
+  let defaultSoundUrl = null;
   let customSoundEnabled = true;
   let aiProvider = 'off'; // 'off', 'gemini', 'claude', or 'chatgpt'
   let aiMode = 'auto'; // 'auto' or 'manual'
@@ -562,11 +563,12 @@
   // Listen for messages from content script
   window.addEventListener('POKERNOW_SOUND_SETTINGS', (e) => {
     customSoundDataUrl = e.detail.customSound;
+    defaultSoundUrl = e.detail.defaultSound;
     customSoundEnabled = e.detail.enabled;
     aiProvider = e.detail.aiProvider || 'off';
     aiMode = e.detail.aiMode || 'auto';
     displayMode = e.detail.displayMode || 'bb';
-    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, enabled: customSoundEnabled, aiProvider, aiMode, displayMode });
+    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, hasDefault: !!defaultSoundUrl, enabled: customSoundEnabled, aiProvider, aiMode, displayMode });
   });
 
   // Listen for manual AI request from side panel
@@ -602,28 +604,32 @@
     }
     lastSoundTime = now;
 
-    if (!customSoundDataUrl) {
-      console.log('[SoundReplacer] No custom sound set');
+    // Use custom sound if set, otherwise use default sound
+    const soundUrl = customSoundDataUrl || defaultSoundUrl;
+    const isDataUrl = soundUrl && soundUrl.startsWith('data:');
+
+    if (!soundUrl) {
+      console.log('[SoundReplacer] No sound available');
       return false;
     }
 
     // Use provided AudioContext, stored context, or create new one
     const ctx = audioContext || unlockedAudioContext;
 
-    if (ctx) {
-      // Play via AudioContext (bypasses autoplay restrictions if context is unlocked)
-      playViaAudioContext(ctx);
+    // For data URLs (custom uploaded sounds), use AudioContext for better compatibility
+    if (ctx && isDataUrl) {
+      playViaAudioContext(ctx, soundUrl);
       return true;
     }
 
-    // Fallback to Audio element (may fail if not unlocked)
+    // For file URLs (default sound) or fallback, use Audio element
     try {
-      const audio = new OriginalAudio(customSoundDataUrl);
+      const audio = new OriginalAudio(soundUrl);
       audio.volume = 1.0;
       OriginalPlay.call(audio).catch(err => {
         console.error('[SoundReplacer] Play error:', err);
       });
-      console.log('[SoundReplacer] ▶ Playing custom sound (Audio element)');
+      console.log('[SoundReplacer] ▶ Playing sound (Audio element):', isDataUrl ? 'custom' : 'default');
       return true;
     } catch (err) {
       console.error('[SoundReplacer] Error:', err);
@@ -632,9 +638,9 @@
   }
 
   // Play sound using AudioContext (works without user gesture if context is unlocked)
-  function playViaAudioContext(ctx) {
+  function playViaAudioContext(ctx, dataUrl) {
     // Decode base64 data URL to ArrayBuffer
-    const base64 = customSoundDataUrl.split(',')[1];
+    const base64 = dataUrl.split(',')[1];
     const binaryString = atob(base64);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
@@ -1409,7 +1415,7 @@
         // FALLBACK: Directly play custom sound after a short delay
         // Only works if audio was unlocked via user interaction
         setTimeout(() => {
-          if (isMyTurnPending && customSoundEnabled && customSoundDataUrl && audioUnlocked) {
+          if (isMyTurnPending && customSoundEnabled && (customSoundDataUrl || defaultSoundUrl) && audioUnlocked) {
             console.log('[SoundReplacer] ⏰ Fallback: Playing custom sound directly');
             playCustomSound();
             isMyTurnPending = false;
@@ -1549,7 +1555,7 @@
   // Determine if we should replace the sound
   function shouldReplaceSound() {
     // Only replace when turn just started (pending flag), NOT for every action during my turn
-    return customSoundEnabled && customSoundDataUrl && isMyTurnPending;
+    return customSoundEnabled && (customSoundDataUrl || defaultSoundUrl) && isMyTurnPending;
   }
 
   const OriginalAudioContext = window.AudioContext || window.webkitAudioContext;
