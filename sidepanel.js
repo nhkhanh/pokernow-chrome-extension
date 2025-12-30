@@ -39,6 +39,17 @@
     }
   }
 
+  // Escape HTML special characters to prevent XSS and display issues
+  function escapeHtml(text) {
+    if (!text) return text;
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // Format cards with four colors and suit emojis
   // Only format cards in specific contexts where cards appear (not player names)
   function formatCards(text) {
@@ -103,7 +114,7 @@
           // Check if turn entry is for this player (e.g., "PlayerName's turn")
           if (turnLabel.includes(playerName)) {
             const content = turnEntry.querySelector('.label');
-            content.innerHTML = formatCards(message);
+            content.innerHTML = formatCards(escapeHtml(message));
             turnEntry.className = 'log-entry action';
             logContainer.scrollTop = logContainer.scrollHeight;
             return;
@@ -123,7 +134,7 @@
 
     const content = document.createElement('span');
     content.className = 'label';
-    content.innerHTML = formatCards(message);
+    content.innerHTML = formatCards(escapeHtml(message));
 
     entry.appendChild(time);
     entry.appendChild(content);
