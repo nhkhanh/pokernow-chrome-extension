@@ -17,7 +17,8 @@
     "*://*.pokernow.club/*",
     "*://gemini.google.com/*",
     "*://claude.ai/*",
-    "*://chatgpt.com/*"
+    "*://chatgpt.com/*",
+    "*://www.google-analytics.com/*"
   ],
   "background": {
     "service_worker": "background.js"

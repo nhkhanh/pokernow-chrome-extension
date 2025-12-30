@@ -59,18 +59,54 @@
            });
   }
 
-  // Stop any ongoing generation
+  // Stop any ongoing generation and wait for send button to be ready
   function stopGeneration(callback) {
     const stopBtn = findStopButton();
     if (stopBtn && isButtonEnabled(stopBtn)) {
       console.log('[Gemini] Found Stop button, clicking to stop generation...');
       simulateClick(stopBtn);
-      // Wait for generation to stop and send button to appear
-      setTimeout(callback, 1000);
+      // Wait for send button to become enabled after stopping
+      waitForSendButtonAfterStop(callback);
     } else {
       // No stop button, proceed immediately
       callback();
     }
+  }
+
+  // Wait for send button to be enabled after stopping generation
+  function waitForSendButtonAfterStop(callback, timeout = 10000) {
+    const startTime = Date.now();
+    console.log('[Gemini] Waiting for send button to be enabled after stopping...');
+
+    const checkButton = () => {
+      const sendBtn = findSendButton();
+      const stopBtn = findStopButton();
+
+      // Make sure stop button is gone or disabled, and send button is enabled
+      const stopGone = !stopBtn || !isButtonEnabled(stopBtn);
+      const sendReady = sendBtn && isButtonEnabled(sendBtn);
+
+      if (stopGone && sendReady) {
+        console.log('[Gemini] Send button is ready after stop');
+        callback();
+        return true;
+      }
+      return false;
+    };
+
+    // Check immediately
+    if (checkButton()) return;
+
+    // Poll until ready or timeout
+    const pollInterval = setInterval(() => {
+      if (checkButton()) {
+        clearInterval(pollInterval);
+      } else if (Date.now() - startTime > timeout) {
+        console.log('[Gemini] Timeout waiting for send button after stop, proceeding anyway');
+        clearInterval(pollInterval);
+        callback();
+      }
+    }, 300);
   }
 
   // Find the send button using various selectors

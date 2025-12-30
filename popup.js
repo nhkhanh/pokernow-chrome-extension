@@ -16,6 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentAudio = null;
 
+  // Track popup open
+  if (window.analytics) {
+    window.analytics.trackPopupOpen();
+  }
+
   // Update AI mode row visibility
   function updateAiModeVisibility() {
     aiModeRow.style.display = aiProvider.value === 'off' ? 'none' : 'flex';
@@ -38,6 +43,9 @@ document.addEventListener('DOMContentLoaded', () => {
   enableToggle.addEventListener('change', () => {
     chrome.storage.local.set({ enabled: enableToggle.checked }, () => {
       showStatus(enableToggle.checked ? 'Sound replacement enabled' : 'Sound replacement disabled', 'success');
+      if (window.analytics) {
+        window.analytics.trackSettingsChange('enabled', enableToggle.checked);
+      }
     });
   });
 
@@ -52,6 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
       };
       showStatus(messages[aiProvider.value], 'success');
       updateAiModeVisibility();
+      if (window.analytics) {
+        window.analytics.trackSettingsChange('ai_provider', aiProvider.value);
+      }
     });
   });
 
@@ -63,6 +74,9 @@ document.addEventListener('DOMContentLoaded', () => {
         'manual': 'Click "Ask AI" in side panel for analysis'
       };
       showStatus(messages[aiMode.value], 'success');
+      if (window.analytics) {
+        window.analytics.trackSettingsChange('ai_mode', aiMode.value);
+      }
     });
   });
 
@@ -74,6 +88,9 @@ document.addEventListener('DOMContentLoaded', () => {
         'chips': 'Showing bet values in chips'
       };
       showStatus(messages[displayMode.value], 'success');
+      if (window.analytics) {
+        window.analytics.trackSettingsChange('display_mode', displayMode.value);
+      }
     });
   });
 
@@ -106,6 +123,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }, () => {
         showCurrentSound(file.name);
         showStatus('Sound uploaded successfully!', 'success');
+        if (window.analytics) {
+          window.analytics.trackSoundUpload();
+        }
       });
     };
     reader.onerror = () => {
@@ -143,6 +163,9 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.remove(['customSound', 'soundFileName'], () => {
       hideCurrentSound();
       showStatus('Sound removed', 'success');
+      if (window.analytics) {
+        window.analytics.trackSoundRemoved();
+      }
     });
   });
 

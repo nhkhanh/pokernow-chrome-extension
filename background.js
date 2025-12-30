@@ -1,5 +1,20 @@
 // Background service worker for coordinating AI requests
 
+// Import analytics module
+importScripts('analytics.js');
+
+// Track extension install/update
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    sendAnalyticsEvent('extension_install', { install_reason: 'install' });
+  } else if (details.reason === 'update') {
+    sendAnalyticsEvent('extension_install', {
+      install_reason: 'update',
+      previous_version: details.previousVersion
+    });
+  }
+});
+
 // Inject WebSocket override early into PokerNow pages
 chrome.webNavigation.onCommitted.addListener(async (details) => {
   if (details.frameId !== 0) return; // Only main frame
@@ -93,6 +108,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleAIRequest(provider, handLog) {
   const fullPrompt = buildPokerPrompt(handLog);
+
+  // Track AI request
+  sendAnalyticsEvent('ai_request', { ai_provider: provider });
 
   try {
     if (provider === 'gemini') {

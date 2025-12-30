@@ -32,6 +32,92 @@
     check();
   }
 
+  // Find the stop button (shown when Claude is generating)
+  function findStopButton() {
+    return document.querySelector('button[aria-label*="Stop"]') ||
+           document.querySelector('button[aria-label*="stop"]') ||
+           document.querySelector('button[data-testid="stop-button"]') ||
+           // Look for button with stop icon
+           Array.from(document.querySelectorAll('button')).find(btn => {
+             const ariaLabel = btn.getAttribute('aria-label') || '';
+             if (ariaLabel.toLowerCase().includes('stop')) {
+               return true;
+             }
+             // Check for stop icon inside button
+             const svg = btn.querySelector('svg');
+             if (svg) {
+               const path = svg.querySelector('path');
+               // Claude's stop button typically has a square/rect shape
+               if (path && btn.closest('form')) {
+                 const d = path.getAttribute('d') || '';
+                 // Square-ish path for stop icon
+                 if (d.includes('rect') || d.includes('M4') || d.includes('M6')) {
+                   return true;
+                 }
+               }
+             }
+             return false;
+           });
+  }
+
+  // Check if button is enabled
+  function isButtonEnabled(btn) {
+    if (!btn) return false;
+    return !btn.disabled &&
+           btn.getAttribute('aria-disabled') !== 'true' &&
+           !btn.classList.contains('disabled');
+  }
+
+  // Stop any ongoing generation and wait for send button to be ready
+  function stopGeneration(callback) {
+    const stopBtn = findStopButton();
+    if (stopBtn && isButtonEnabled(stopBtn)) {
+      console.log('[Claude] Found Stop button, clicking to stop generation...');
+      stopBtn.click();
+      // Wait for send button to become enabled after stopping
+      waitForSendButtonAfterStop(callback);
+    } else {
+      // No stop button, proceed immediately
+      callback();
+    }
+  }
+
+  // Wait for send button to be enabled after stopping generation
+  function waitForSendButtonAfterStop(callback, timeout = 10000) {
+    const startTime = Date.now();
+    console.log('[Claude] Waiting for send button to be enabled after stopping...');
+
+    const checkButton = () => {
+      const sendBtn = findSendButton();
+      const stopBtn = findStopButton();
+
+      // Make sure stop button is gone or disabled, and send button is enabled
+      const stopGone = !stopBtn || !isButtonEnabled(stopBtn);
+      const sendReady = sendBtn && isButtonEnabled(sendBtn);
+
+      if (stopGone && sendReady) {
+        console.log('[Claude] Send button is ready after stop');
+        callback();
+        return true;
+      }
+      return false;
+    };
+
+    // Check immediately
+    if (checkButton()) return;
+
+    // Poll until ready or timeout
+    const pollInterval = setInterval(() => {
+      if (checkButton()) {
+        clearInterval(pollInterval);
+      } else if (Date.now() - startTime > timeout) {
+        console.log('[Claude] Timeout waiting for send button after stop, proceeding anyway');
+        clearInterval(pollInterval);
+        callback();
+      }
+    }, 300);
+  }
+
   // Find the send button using various selectors
   function findSendButton() {
     // Try various selectors for the send button
@@ -106,38 +192,41 @@
 
     isProcessing = true;
 
-    waitForInput((inputEl) => {
-      // Clear existing content
-      inputEl.innerHTML = '';
-      inputEl.textContent = '';
+    // First, stop any ongoing generation
+    stopGeneration(() => {
+      waitForInput((inputEl) => {
+        // Clear existing content
+        inputEl.innerHTML = '';
+        inputEl.textContent = '';
 
-      // Focus the input
-      inputEl.focus();
+        // Focus the input
+        inputEl.focus();
 
-      // Convert line breaks to proper HTML paragraphs for ProseMirror
-      const lines = prompt.split('\n');
-      if (lines.length > 1) {
-        // Multiple lines - use paragraph elements
-        inputEl.innerHTML = lines.map(line => `<p>${line || '<br>'}</p>`).join('');
-      } else {
-        // Single line - use textContent
-        inputEl.textContent = prompt;
-      }
+        // Convert line breaks to proper HTML paragraphs for ProseMirror
+        const lines = prompt.split('\n');
+        if (lines.length > 1) {
+          // Multiple lines - use paragraph elements
+          inputEl.innerHTML = lines.map(line => `<p>${line || '<br>'}</p>`).join('');
+        } else {
+          // Single line - use textContent
+          inputEl.textContent = prompt;
+        }
 
-      // Trigger input event
-      inputEl.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: prompt
-      }));
+        // Trigger input event
+        inputEl.dispatchEvent(new InputEvent('input', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: prompt
+        }));
 
-      // Wait a moment for the UI to update, then click send
-      setTimeout(() => {
-        console.log('[Claude] Attempting to send prompt...');
-        clickSendButton();
-        watchForResponse();
-      }, 800);
+        // Wait a moment for the UI to update, then click send
+        setTimeout(() => {
+          console.log('[Claude] Attempting to send prompt...');
+          clickSendButton();
+          watchForResponse();
+        }, 800);
+      });
     });
   }
 

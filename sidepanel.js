@@ -18,6 +18,10 @@
 
   // Ask AI button handler
   askAiBtn.addEventListener('click', () => {
+    // Track manual AI request
+    if (window.analytics) {
+      window.analytics.sendEvent('manual_ai_request');
+    }
     // Send message to background script to trigger AI analysis
     chrome.runtime.sendMessage({ type: 'MANUAL_AI_REQUEST' })
       .catch(err => console.error('[SidePanel] Error sending AI request:', err));
@@ -150,6 +154,11 @@
       addLogEntry(message.logType, message.message);
     }
   });
+
+  // Track sidepanel open
+  if (window.analytics) {
+    window.analytics.sendEvent('sidepanel_open');
+  }
 
   console.log('[SidePanel] Game log panel loaded');
 })();
