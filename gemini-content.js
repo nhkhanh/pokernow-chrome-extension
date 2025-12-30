@@ -33,6 +33,46 @@
     check();
   }
 
+  // Find the stop button (shown when Gemini is generating)
+  function findStopButton() {
+    return document.querySelector('button[aria-label*="Stop"]') ||
+           document.querySelector('button[aria-label*="stop"]') ||
+           document.querySelector('button[mattooltip*="Stop"]') ||
+           document.querySelector('button[data-test-id="stop-button"]') ||
+           // Look for button with stop icon
+           Array.from(document.querySelectorAll('button')).find(btn => {
+             const ariaLabel = btn.getAttribute('aria-label') || '';
+             const matTooltip = btn.getAttribute('mattooltip') || '';
+             if (ariaLabel.toLowerCase().includes('stop') || matTooltip.toLowerCase().includes('stop')) {
+               return true;
+             }
+             // Check for stop icon inside button
+             const icon = btn.querySelector('mat-icon, svg, i');
+             if (icon) {
+               const iconText = icon.textContent?.toLowerCase() || '';
+               const iconClass = icon.className?.toLowerCase() || '';
+               if (iconText.includes('stop') || iconClass.includes('stop')) {
+                 return true;
+               }
+             }
+             return false;
+           });
+  }
+
+  // Stop any ongoing generation
+  function stopGeneration(callback) {
+    const stopBtn = findStopButton();
+    if (stopBtn && isButtonEnabled(stopBtn)) {
+      console.log('[Gemini] Found Stop button, clicking to stop generation...');
+      simulateClick(stopBtn);
+      // Wait for generation to stop and send button to appear
+      setTimeout(callback, 1000);
+    } else {
+      // No stop button, proceed immediately
+      callback();
+    }
+  }
+
   // Find the send button using various selectors
   function findSendButton() {
     // Try various selectors for the send button
@@ -62,29 +102,97 @@
            });
   }
 
+  // Check if button is enabled
+  function isButtonEnabled(btn) {
+    if (!btn) return false;
+    return !btn.disabled &&
+           btn.getAttribute('aria-disabled') !== 'true' &&
+           !btn.classList.contains('disabled');
+  }
+
+  // Simulate a proper mouse click with all events
+  function simulateClick(element) {
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+
+    const eventOptions = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: x,
+      clientY: y
+    };
+
+    element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
+    element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
+    element.dispatchEvent(new MouseEvent('click', eventOptions));
+  }
+
+  // Wait for send button to become enabled using MutationObserver
+  function waitForEnabledSendButton(callback, timeout = 8000) {
+    const startTime = Date.now();
+
+    const checkButton = () => {
+      const sendBtn = findSendButton();
+      if (sendBtn && isButtonEnabled(sendBtn)) {
+        console.log('[Gemini] Send button is now enabled');
+        callback(sendBtn);
+        return true;
+      }
+      return false;
+    };
+
+    // Check immediately
+    if (checkButton()) return;
+
+    // Set up MutationObserver to watch for changes
+    const observer = new MutationObserver(() => {
+      if (checkButton()) {
+        observer.disconnect();
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'aria-disabled', 'class']
+    });
+
+    // Also poll as backup
+    const pollInterval = setInterval(() => {
+      if (checkButton()) {
+        clearInterval(pollInterval);
+        observer.disconnect();
+      } else if (Date.now() - startTime > timeout) {
+        console.log('[Gemini] Timeout waiting for send button');
+        clearInterval(pollInterval);
+        observer.disconnect();
+        // Fallback to Enter key
+        tryEnterKey();
+      }
+    }, 300);
+  }
+
   // Click send button with retry logic
-  function clickSendButton(retryCount = 0, maxRetries = 5) {
+  function clickSendButton() {
     const sendBtn = findSendButton();
 
-    if (sendBtn && !sendBtn.disabled) {
-      console.log('[Gemini] Found send button, clicking...');
-      sendBtn.click();
+    if (sendBtn && isButtonEnabled(sendBtn)) {
+      console.log('[Gemini] Found enabled send button, clicking...');
+      simulateClick(sendBtn);
       return true;
     }
 
-    // If button not found or disabled, retry after delay
-    if (retryCount < maxRetries) {
-      console.log(`[Gemini] Send button not ready, retry ${retryCount + 1}/${maxRetries}...`);
-      setTimeout(() => {
-        if (!clickSendButton(retryCount + 1, maxRetries)) {
-          // Final fallback: try Enter key
-          tryEnterKey();
-        }
-      }, 300);
-      return true; // Return true to indicate we're handling it
-    }
+    // Wait for button to become enabled
+    console.log('[Gemini] Send button not ready, waiting...');
+    waitForEnabledSendButton((btn) => {
+      console.log('[Gemini] Clicking send button...');
+      simulateClick(btn);
+    });
 
-    return false;
+    return true;
   }
 
   // Try pressing Enter as fallback
@@ -118,38 +226,41 @@
 
     isProcessing = true;
 
-    waitForInput((inputEl) => {
-      // Clear existing content
-      inputEl.innerHTML = '';
-      inputEl.textContent = '';
+    // First, stop any ongoing generation
+    stopGeneration(() => {
+      waitForInput((inputEl) => {
+        // Clear existing content
+        inputEl.innerHTML = '';
+        inputEl.textContent = '';
 
-      // Focus the input
-      inputEl.focus();
+        // Focus the input
+        inputEl.focus();
 
-      // Insert the prompt text
-      // Use different methods depending on the element type
-      if (inputEl.tagName === 'TEXTAREA') {
-        inputEl.value = prompt;
-        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-      } else {
-        // For contenteditable divs
-        inputEl.textContent = prompt;
-        // Trigger input event
-        inputEl.dispatchEvent(new InputEvent('input', {
-          bubbles: true,
-          cancelable: true,
-          inputType: 'insertText',
-          data: prompt
-        }));
-      }
+        // Insert the prompt text
+        // Use different methods depending on the element type
+        if (inputEl.tagName === 'TEXTAREA') {
+          inputEl.value = prompt;
+          inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          // For contenteditable divs
+          inputEl.textContent = prompt;
+          // Trigger input event
+          inputEl.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            inputType: 'insertText',
+            data: prompt
+          }));
+        }
 
-      // Wait a moment for the UI to update, then click send
-      setTimeout(() => {
-        console.log('[Gemini] Attempting to send prompt...');
-        clickSendButton();
-        // Start watching for response regardless (button click has retry logic)
-        watchForResponse();
-      }, 800);
+        // Wait a moment for the UI to update, then click send
+        setTimeout(() => {
+          console.log('[Gemini] Attempting to send prompt...');
+          clickSendButton();
+          // Start watching for response regardless (button click has retry logic)
+          watchForResponse();
+        }, 1200);
+      });
     });
   }
 
