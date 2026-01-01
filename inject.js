@@ -38,6 +38,7 @@
   let socketPrevRabbit = ''; // Previous rabbit cards (to avoid duplicate logs)
   let socketMyId = null;  // Current player's ID
   let socketHandLog = []; // Hand log collected from socket events (for AI)
+  let socketSmallBlind = 0.5; // Small blind value
   let socketBigBlind = 1; // Big blind value for BB conversion
   let displayMode = 'bb'; // 'bb' or 'chips'
   let socketTurnStartTime = 0; // Timestamp when current player's turn started
@@ -52,6 +53,99 @@
     const bb = chips / socketBigBlind;
     // Show as integer if whole number, otherwise 1 decimal place
     return bb % 1 === 0 ? `${bb}BB` : `${bb.toFixed(1)}BB`;
+  }
+
+  // Calculate position name (BTN, SB, BB, UTG, MP, CO, HJ, etc.) for a player
+  // Uses ALL seated players (not just active) to correctly determine positions
+  function getPositionName(playerId, dealerId, sbId, _bbId, inHandPlayerIds) {
+    if (!playerId) return '?';
+
+    // Get ALL players at the table sorted by seat (not just in-hand players)
+    // This ensures we correctly find dealer even if they folded
+    const allSeatedPlayers = Object.keys(socketSeats)
+      .filter(id => socketSeats[id] !== undefined)
+      .sort((a, b) => (socketSeats[a] || 99) - (socketSeats[b] || 99));
+
+    if (allSeatedPlayers.length === 0) return '?';
+
+    // Find the dealer - use dealerId if provided, otherwise derive from SB
+    let dealerSeat = null;
+    if (dealerId && socketSeats[dealerId] !== undefined) {
+      dealerSeat = socketSeats[dealerId];
+    } else if (sbId && socketSeats[sbId] !== undefined) {
+      // Dealer is the seat before SB (looking at ALL players, not just active)
+      const sbSeat = socketSeats[sbId];
+      const sbIdx = allSeatedPlayers.findIndex(id => socketSeats[id] === sbSeat);
+      if (sbIdx !== -1) {
+        const dealerIdx = sbIdx === 0 ? allSeatedPlayers.length - 1 : sbIdx - 1;
+        dealerSeat = socketSeats[allSeatedPlayers[dealerIdx]];
+      }
+    }
+
+    if (dealerSeat === null) return '?';
+
+    // Now use only in-hand players for position assignment, but ordered from dealer
+    const activePlayers = inHandPlayerIds
+      .filter(id => socketSeats[id] !== undefined)
+      .sort((a, b) => (socketSeats[a] || 99) - (socketSeats[b] || 99));
+
+    if (activePlayers.length === 0) return '?';
+
+    // Reorder active players starting from the first one AFTER dealer seat
+    // Find first active player whose seat is > dealerSeat (or wrap around)
+    let startIdx = activePlayers.findIndex(id => socketSeats[id] > dealerSeat);
+    if (startIdx === -1) startIdx = 0; // All seats <= dealer, so first player is after dealer (wrapped)
+
+    const orderedPlayers = [
+      ...activePlayers.slice(startIdx),
+      ...activePlayers.slice(0, startIdx)
+    ];
+
+    const numPlayers = orderedPlayers.length;
+    const playerIdx = orderedPlayers.indexOf(playerId);
+    if (playerIdx === -1) return '?';
+
+    // Heads-up special case: first player is BTN (also SB), second is BB
+    if (numPlayers === 2) {
+      return playerIdx === 0 ? 'BTN' : 'BB';
+    }
+
+    // 3+ players: SB is first after dealer, BB is second, etc.
+    // Position 0 = SB, 1 = BB, last = BTN, others are UTG onwards
+    if (playerIdx === numPlayers - 1) return 'BTN';
+    if (playerIdx === 0) return 'SB';
+    if (playerIdx === 1) return 'BB';
+
+    // Remaining positions between BB and BTN (UTG through CO)
+    const posAfterBB = playerIdx - 2; // 0-indexed position after BB
+    const numMiddle = numPlayers - 3; // Number of players between BB and BTN
+
+    if (numMiddle <= 0) return '?';
+
+    // Position names from earliest to latest (UTG -> CO)
+    if (numMiddle === 1) {
+      // 4 players: SB, BB, UTG, BTN
+      return 'UTG';
+    } else if (numMiddle === 2) {
+      // 5 players: SB, BB, UTG, CO, BTN
+      return posAfterBB === 0 ? 'UTG' : 'CO';
+    } else if (numMiddle === 3) {
+      // 6 players: SB, BB, UTG, MP, CO, BTN
+      const names = ['UTG', 'MP', 'CO'];
+      return names[posAfterBB] || '?';
+    } else if (numMiddle === 4) {
+      // 7 players: SB, BB, UTG, MP, HJ, CO, BTN
+      const names = ['UTG', 'MP', 'HJ', 'CO'];
+      return names[posAfterBB] || '?';
+    } else if (numMiddle === 5) {
+      // 8 players: SB, BB, UTG, UTG+1, MP, HJ, CO, BTN
+      const names = ['UTG', 'UTG+1', 'MP', 'HJ', 'CO'];
+      return names[posAfterBB] || '?';
+    } else {
+      // 9+ players: SB, BB, UTG, UTG+1, MP, LJ, HJ, CO, BTN
+      const names = ['UTG', 'UTG+1', 'MP', 'LJ', 'HJ', 'CO'];
+      return names[posAfterBB] || 'EP';
+    }
   }
 
   // Get thinking time for a player and reset if it was their turn
@@ -118,8 +212,9 @@
       const gs = data.gameState;
       if (!gs) return;
 
-      // Track current player ID and big blind
+      // Track current player ID and blinds
       socketMyId = data.currentPlayer?.id;
+      socketSmallBlind = gs.smallBlind || 0.5;
       socketBigBlind = gs.bigBlind || 1;
 
       // Extract player info with stacks
@@ -254,9 +349,16 @@
       console.log(`[Socket] Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
       console.log(`[Socket] Stacks: ${playerList.join(', ')}`);
 
+      // Calculate my position and name
+      const myPosition = socketMyId ? getPositionName(socketMyId, data.dealerID, data.sBPI, data.bBPI, data.iHPI || []) : '?';
+      const myName = socketMyId ? (socketPlayers[socketMyId]?.name || '?') : '?';
+      console.log(`[Socket] You: ${myName} (${myPosition})`);
+
       // Dispatch to side panel
       dispatchSocketLog('newgame', `Hand #${data.gN} - Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
+      dispatchSocketLog('info', `Blinds: ${formatBet(socketSmallBlind)}/${formatBet(socketBigBlind)}`);
       dispatchSocketLog('info', `Stacks: ${playerList.join(', ')}`);
+      dispatchSocketLog('info', `You: ${myName} (${myPosition})`);
 
       // Log hole cards if provided
       if (data.pC) {
