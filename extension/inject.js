@@ -690,6 +690,27 @@
         50% { box-shadow: 0 0 30px 12px rgba(255, 215, 0, 1); }
       }
 
+      /* Action type text colors */
+      .table-player.last-action-check .table-player-bet-value,
+      .table-player.last-action-check .table-player-status-icon {
+        color: #9e9e9e !important;
+      }
+
+      .table-player.last-action-fold .table-player-bet-value,
+      .table-player.last-action-fold .table-player-status-icon {
+        color: #f44336 !important;
+      }
+
+      .table-player.last-action-call .table-player-bet-value,
+      .table-player.last-action-call .table-player-status-icon {
+        color: #2196f3 !important;
+      }
+
+      .table-player.last-action-raise .table-player-bet-value,
+      .table-player.last-action-raise .table-player-status-icon {
+        color: #4caf50 !important;
+      }
+
       .ask-ai-button-container {
         margin-right: 8px;
         position: relative;
@@ -1234,10 +1255,11 @@
 
   // Detect and highlight the player who made the last action
   function highlightLastAction(status) {
-    // Remove previous highlight
+    // Remove previous highlight and action type classes
     const previousHighlight = document.querySelector('.table-player.last-action-highlight');
     if (previousHighlight) {
       previousHighlight.classList.remove('last-action-highlight');
+      previousHighlight.classList.remove('last-action-check', 'last-action-fold', 'last-action-call', 'last-action-raise');
     }
 
     // Find ALL players who just acted by comparing with previous state
@@ -1338,6 +1360,18 @@
       const playerEl = document.querySelector(`.table-player-${lastActedPlayer.seat}`);
       if (playerEl) {
         playerEl.classList.add('last-action-highlight');
+
+        // Add action type class for text coloring
+        const action = (lastActedPlayer.action || '').toLowerCase();
+        if (action === 'check') {
+          playerEl.classList.add('last-action-check');
+        } else if (action === 'fold') {
+          playerEl.classList.add('last-action-fold');
+        } else if (action.startsWith('call') || action === 'limp') {
+          playerEl.classList.add('last-action-call');
+        } else if (action.startsWith('raise') || action.startsWith('bet') || action.startsWith('all-in')) {
+          playerEl.classList.add('last-action-raise');
+        }
       }
     }
 

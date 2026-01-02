@@ -102,6 +102,21 @@
     return match ? match[1].trim() : null;
   }
 
+  // Get action type CSS class from message (e.g., "PlayerName: FOLD" -> "action-fold")
+  function getActionTypeClass(message) {
+    const upperMsg = message.toUpperCase();
+    if (upperMsg.includes(': CHECK')) {
+      return 'action-check';
+    } else if (upperMsg.includes(': FOLD')) {
+      return 'action-fold';
+    } else if (upperMsg.includes(': CALL') || upperMsg.includes(': LIMP')) {
+      return 'action-call';
+    } else if (upperMsg.includes(': RAISE') || upperMsg.includes(': BET') || upperMsg.includes(': ALL-IN')) {
+      return 'action-raise';
+    }
+    return 'action'; // default green for unknown actions
+  }
+
   // Add a log entry
   function addLogEntry(type, message) {
     removeEmptyState();
@@ -109,6 +124,7 @@
     // If this is an action (my or other), replace matching turn entry
     if (type === 'myaction' || type === 'action') {
       const playerName = extractPlayerName(message);
+      const actionTypeClass = getActionTypeClass(message);
       if (playerName) {
         // Find turn entries and look for one matching this player
         const turnEntries = logContainer.querySelectorAll('.log-entry.turn, .log-entry.myturn');
@@ -119,14 +135,14 @@
           if (turnLabel.includes(playerName)) {
             const content = turnEntry.querySelector('.label');
             content.innerHTML = formatCards(escapeHtml(message));
-            turnEntry.className = 'log-entry action';
+            turnEntry.className = `log-entry ${actionTypeClass}`;
             logContainer.scrollTop = logContainer.scrollHeight;
             return;
           }
         }
       }
       // Fallback: add as regular action if no matching turn entry found
-      type = 'action';
+      type = actionTypeClass;
     }
 
     const entry = document.createElement('div');
