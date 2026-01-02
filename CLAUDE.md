@@ -11,16 +11,28 @@ Chrome extension for PokerNow.club that provides:
 - Content script + page script injection pattern
 
 ## File Structure
-- `manifest.json` - Extension configuration
-- `content.js` - Content script that bridges extension storage to page context
-- `inject.js` - Main script injected into PokerNow pages (contains all game logic)
-- `popup.html` / `popup.js` - Extension popup UI for settings
-- `*.mp3` - Default notification sounds
-- `icon*.png` - Extension icons
+```
+/extension/           - Chrome extension files (for publishing)
+  manifest.json       - Extension configuration
+  content.js          - Content script that bridges extension storage to page context
+  inject.js           - Main script injected into PokerNow pages (contains all game logic)
+  popup.html/popup.js - Extension popup UI for settings
+  background.js       - Service worker for extension
+  sidepanel.*         - Side panel UI
+  *-content.js        - AI assistant integration scripts
+  analytics.js        - Google Analytics integration
+  *.mp3               - Default notification sounds
+  icon*.png           - Extension icons
+/assets/              - Chrome Web Store listing assets
+README.md             - Project documentation
+LICENSE               - MIT license
+PRIVACY_POLICY.md     - Privacy policy
+STORE_LISTING.md      - Chrome Web Store listing info
+```
 
 ## Key Architecture
 
-### inject.js
+### extension/inject.js
 - `getTableStatus()` - Parses PokerNow DOM to extract game state (players, actions, pot, cards)
 - `highlightLastAction()` - Detects and highlights the player who just acted
 - `setupTurnDetection()` - MutationObserver watching for class changes on `.table-player` elements

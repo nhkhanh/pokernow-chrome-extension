@@ -594,7 +594,7 @@
   let customSoundDataUrl = null;
   let defaultSoundUrl = null;
   let customSoundEnabled = true;
-  let aiProvider = 'off'; // 'off', 'gemini', 'claude', or 'chatgpt'
+  let aiProvider = 'gemini'; // 'gemini', 'claude', or 'chatgpt'
   let aiMode = 'auto'; // 'auto' or 'manual'
   let lastSoundTime = 0;
   let isMyTurnPending = false; // Flag: expecting "your turn" sound
@@ -632,7 +632,6 @@
 
   // Send current hand log to AI for analysis (only in auto mode)
   function sendToAI() {
-    if (aiProvider === 'off') return;
     if (aiMode !== 'auto') {
       console.log('[SoundReplacer] AI mode is manual - skipping automatic send');
       return;
@@ -690,9 +689,102 @@
         0%, 100% { box-shadow: 0 0 20px 8px rgba(255, 215, 0, 0.8); }
         50% { box-shadow: 0 0 30px 12px rgba(255, 215, 0, 1); }
       }
+
+      .ask-ai-button-container {
+        margin-right: 8px;
+        position: relative;
+      }
+
+      .ask-ai-button-container .tip {
+        display: none !important;
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-top: 5px;
+        white-space: nowrap;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 16px;
+        z-index: 100;
+        color: white;
+      }
+
+      .ask-ai-button-container:hover .tip {
+        display: block !important;
+      }
+
+      .ask-ai-button {
+        font-weight: bold;
+        text-indent: 0 !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .ask-ai-button:hover {
+        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
+      }
+
+      .ask-ai-button svg {
+        display: block;
+        width: 32px;
+        height: 32px;
+        margin: 0;
+      }
     `;
     document.head.appendChild(style);
     console.log('[SoundReplacer] 🎨 Last action highlight styles injected');
+  }
+
+  // Inject Ask AI button next to Sound button (for mobile view)
+  function injectAskAIButton() {
+    if (document.getElementById('pokernow-ask-ai-button')) return;
+
+    const topRightButtons = document.querySelector('.top-right-buttons');
+    if (!topRightButtons) {
+      console.log('[SoundReplacer] .top-right-buttons not found, retrying...');
+      setTimeout(injectAskAIButton, 1000);
+      return;
+    }
+
+    const soundContainer = topRightButtons.querySelector('.sound-control-button-container');
+    if (!soundContainer) {
+      console.log('[SoundReplacer] .sound-control-button-container not found, retrying...');
+      setTimeout(injectAskAIButton, 1000);
+      return;
+    }
+
+    // Create Ask AI button container
+    const askAIContainer = document.createElement('div');
+    askAIContainer.className = 'ask-ai-button-container';
+
+    const tipEl = document.createElement('p');
+    tipEl.className = 'tip';
+    tipEl.textContent = 'Ask AI for advice';
+
+    const askAIButton = document.createElement('button');
+    askAIButton.id = 'pokernow-ask-ai-button';
+    askAIButton.className = 'button-1 dark-gray small-button action-button ask-ai-button';
+    askAIButton.type = 'button';
+    askAIButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>';
+
+    askAIButton.addEventListener('click', () => {
+      console.log('[SoundReplacer] 🤖 Ask AI button clicked');
+      window.dispatchEvent(new CustomEvent('POKERNOW_MANUAL_AI_REQUEST'));
+    });
+
+    askAIContainer.appendChild(askAIButton);
+    askAIContainer.appendChild(tipEl);
+
+    // Insert before the sound button container
+    topRightButtons.insertBefore(askAIContainer, soundContainer);
+
+    console.log('[SoundReplacer] 🤖 Ask AI button injected');
   }
 
   // Listen for messages from content script
@@ -700,7 +792,7 @@
     customSoundDataUrl = e.detail.customSound;
     defaultSoundUrl = e.detail.defaultSound;
     customSoundEnabled = e.detail.enabled;
-    aiProvider = e.detail.aiProvider || 'off';
+    aiProvider = e.detail.aiProvider || 'gemini';
     aiMode = e.detail.aiMode || 'auto';
     displayMode = e.detail.displayMode || 'bb';
     console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, hasDefault: !!defaultSoundUrl, enabled: customSoundEnabled, aiProvider, aiMode, displayMode });
@@ -708,10 +800,6 @@
 
   // Listen for manual AI request from side panel
   window.addEventListener('POKERNOW_MANUAL_AI_REQUEST', () => {
-    if (aiProvider === 'off') {
-      console.log('[SoundReplacer] Manual AI request ignored - AI provider is off');
-      return;
-    }
     if (socketHandLog.length === 0) {
       console.log('[SoundReplacer] Manual AI request ignored - no hand log');
       return;
@@ -1298,6 +1386,8 @@
   function setupTurnDetection() {
     // Inject highlight styles
     injectHighlightStyles();
+    // Inject Ask AI button next to Sound button
+    injectAskAIButton();
 
     let wasMyTurn = false;
 

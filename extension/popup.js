@@ -21,15 +21,15 @@ document.addEventListener('DOMContentLoaded', () => {
     window.analytics.trackPopupOpen();
   }
 
-  // Update AI mode row visibility
+  // Update AI mode row visibility (always visible now)
   function updateAiModeVisibility() {
-    aiModeRow.style.display = aiProvider.value === 'off' ? 'none' : 'flex';
+    aiModeRow.style.display = 'flex';
   }
 
   // Load saved settings
   chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
     enableToggle.checked = result.enabled !== false;
-    aiProvider.value = result.aiProvider || 'off';
+    aiProvider.value = result.aiProvider || 'gemini';
     aiMode.value = result.aiMode || 'auto';
     displayMode.value = result.displayMode || 'bb';
     updateAiModeVisibility();
@@ -53,7 +53,6 @@ document.addEventListener('DOMContentLoaded', () => {
   aiProvider.addEventListener('change', () => {
     chrome.storage.local.set({ aiProvider: aiProvider.value }, () => {
       const messages = {
-        'off': 'AI assistant disabled',
         'gemini': 'Using Gemini AI',
         'claude': 'Using Claude AI',
         'chatgpt': 'Using ChatGPT'

@@ -28,7 +28,7 @@
           customSound: result.customSound || null,
           defaultSound: defaultSoundUrl,
           enabled: result.enabled !== false,
-          aiProvider: result.aiProvider || 'off',
+          aiProvider: result.aiProvider || 'gemini',
           aiMode: result.aiMode || 'auto',
           displayMode: result.displayMode || 'bb'
         }
