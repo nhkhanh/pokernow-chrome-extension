@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PokerNow Extension",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Enhance PokerNow with custom turn sounds, AI assistant integration, and real-time hand tracking.",
   "permissions": [
     "storage",
