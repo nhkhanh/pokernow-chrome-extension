@@ -237,13 +237,26 @@ async function handleChatGPTRequest(fullPrompt) {
 }
 
 function buildPokerPrompt(handLog) {
-  return `You are a poker advisor. Show Recommended Action first then reasoning.
-If recommending bet or raise, include the value in BB (e.g., "Raise to 8BB" or "Bet 3BB").
+  return `You are a poker advisor. Analyze the hand and provide multiple action options with GTO mixed strategy.
+
+For each possible action, show:
+1. Action (Fold/Check/Call/Bet/Raise with amount in BB)
+2. EV (expected value estimate: positive +BB or negative -BB)
+3. Frequency (percentage of time to take this action in a mixed strategy, must sum to 100%)
+
+Format as a table, then provide brief reasoning for the top recommendation.
+
+Example format:
+| Action | EV | Freq |
+|--------|-----|------|
+| Raise 8BB | +2.5BB | 60% |
+| Call | +0.5BB | 30% |
+| Fold | 0BB | 10% |
 
 Hand Log:
 ${handLog}
 
-What should I do?`;
+What are my options?`;
 }
 
 async function forwardToPokerNow(response) {
