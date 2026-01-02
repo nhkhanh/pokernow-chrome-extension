@@ -14,48 +14,55 @@ Enhance your PokerNow experience with custom turn sounds, AI assistant integrati
 
 ### Full Description
 ```
-PokerNow Extension - Level Up Your Online Poker Game
+🎰 PokerNow Extension - Level Up Your Online Poker Game
 
 Enhance your PokerNow.club experience with powerful features designed for serious players.
 
----
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CUSTOM TURN SOUNDS
+🔔 CUSTOM TURN SOUNDS
 Never miss your turn again! Replace the default notification with your own custom audio file. Upload any MP3, WAV, or OGG file to personalize your alerts.
 
-AI ASSISTANT INTEGRATION
+🤖 AI ASSISTANT INTEGRATION
 Get real-time poker analysis with your favorite AI:
-- Google Gemini
-- Claude (Anthropic)
-- ChatGPT (OpenAI)
-Choose between automatic or manual mode for AI suggestions.
+  • Google Gemini
+  • Claude (Anthropic)
+  • ChatGPT (OpenAI)
 
-FLEXIBLE BET DISPLAY
+Two modes available:
+  ▸ Automatic Mode - AI automatically analyzes the hand when it's your turn
+  ▸ Manual Mode - Use the ⭐ Ask AI button on the table for on-demand analysis
+
+The AI provides a GTO mixed strategy table with recommended actions, expected values, and frequencies.
+
+💰 FLEXIBLE BET DISPLAY
 View bets in the format that works best for you:
-- Big Blinds (BB) - Perfect for tournament and cash game strategy
-- Chips - Traditional chip count display
+  • Big Blinds (BB) - Perfect for tournament and cash game strategy
+  • Chips - Traditional chip count display
 
-REAL-TIME HAND TRACKING
+📋 REAL-TIME HAND TRACKING
 Side panel displays live game logs including:
-- Player actions with timing
-- Hand history
-- Board cards as they're dealt
+  • Player actions with timing
+  • Hand history
+  • Board cards as they're dealt
 
-LAST ACTION HIGHLIGHT
+✨ LAST ACTION HIGHLIGHT
 Visual highlights show who just acted with color-coded actions:
-- Gray for Check
-- Red for Fold
-- Blue for Call
-- Green for Raise/Bet
+  ⬤ Gray for Check
+  🔴 Red for Fold
+  🔵 Blue for Call
+  🟢 Green for Raise/Bet
 
----
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Easy to use - Just install and play
-Customizable settings via popup
-Works with all PokerNow game types
-Lightweight and fast
+✓ Easy to use - Just install and play
+✓ Customizable settings via popup
+✓ Works with all PokerNow game types
+✓ Lightweight and fast
 
-Note: This extension only works on pokernow.club. AI features require you to have an active session with your chosen AI provider.
+📬 Feedback: https://forms.gle/8fiu7vaZzZLoWzJEA
+
+⚠️ Note: This extension only works on pokernow.club. AI features require you to have an active session with your chosen AI provider.
 ```
 
 ### Category
