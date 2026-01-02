@@ -41,6 +41,13 @@ Side panel displays live game logs including:
 - Hand history
 - Board cards as they're dealt
 
+LAST ACTION HIGHLIGHT
+Visual highlights show who just acted with color-coded actions:
+- Gray for Check
+- Red for Fold
+- Blue for Call
+- Green for Raise/Bet
+
 ---
 
 Easy to use - Just install and play
@@ -151,15 +158,27 @@ If NOT using analytics:
 ### Create ZIP for upload
 ```powershell
 cd d:/khanh/pokernow-chrome-extension
-Compress-Archive -Path manifest.json, content.js, inject.js, popup.html, popup.js, analytics.js, background.js, chatgpt-content.js, claude-content.js, gemini-content.js, sidepanel.html, sidepanel.js, ws-override.js, 'new-level-142995.mp3', 'opening-bell-421471.mp3', icon16.png, icon48.png, icon128.png, LICENSE -DestinationPath pokernow-extension.zip -Force
+.\build.ps1
 ```
+
+Output: `dist/pokernow-extension-v{version}.zip`
 
 ---
 
 ## Version History
 
-### v1.0 (Initial Release)
+### v1.1.0
+- Color-coded action highlights (check=gray, fold=red, call=blue, raise/bet=green)
+- Color-coded actions in side panel log
+- Ask AI button for quick access
+- Feedback form link in popup
+- GTO mixed strategy table format for AI responses
+- Fix "Extension context invalidated" error
+- Semver versioning
+
+### v1.0.0 (Initial Release)
 - Custom turn sound replacement
 - AI assistant integration (Gemini, Claude, ChatGPT)
 - Bet display in BB or chips
 - Real-time hand tracking side panel
+- Last action highlight with golden glow
