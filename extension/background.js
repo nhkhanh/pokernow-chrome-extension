@@ -237,21 +237,28 @@ async function handleChatGPTRequest(fullPrompt) {
 }
 
 function buildPokerPrompt(handLog) {
-  return `You are a poker advisor. Analyze the hand and provide multiple action options with GTO mixed strategy.
+  return `You are a poker advisor. Analyze the hand and provide GTO mixed strategy recommendations.
 
-For each possible action, show:
-1. Action (Fold/Check/Call/Bet/Raise with amount in BB)
-2. EV (expected value estimate: positive +BB or negative -BB)
-3. Frequency (percentage of time to take this action in a mixed strategy, must sum to 100%)
+IMPORTANT: Show the strategy table FIRST, then explain the reasoning AFTER.
 
-Format as a table, then provide brief reasoning for the top recommendation.
+Output format:
+1. First, show the GTO Mixed Strategy table with all viable options
+2. Then, provide analysis and reasoning for each action
 
-Example format:
+Table columns:
+- Action (Fold/Check/Call/Bet/Raise with amount in BB)
+- EV (expected value: +BB or -BB)
+- Freq (percentage in mixed strategy, must sum to 100%)
+
+Example:
 | Action | EV | Freq |
 |--------|-----|------|
 | Raise 8BB | +2.5BB | 60% |
 | Call | +0.5BB | 30% |
 | Fold | 0BB | 10% |
+
+**Analysis:**
+[Reasoning for each action and overall recommendation]
 
 Hand Log:
 ${handLog}
