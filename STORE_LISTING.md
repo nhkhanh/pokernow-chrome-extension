@@ -62,7 +62,7 @@ Visual highlights show who just acted with color-coded actions:
 
 📬 Feedback: https://forms.gle/8fiu7vaZzZLoWzJEA
 
-⚠️ Note: This extension only works on pokernow.club. AI features require you to have an active session with your chosen AI provider.
+⚠️ Note: This extension only works on pokernow.com. AI features require you to have an active session with your chosen AI provider.
 ```
 
 ### Category
@@ -88,7 +88,7 @@ Enhance PokerNow.club gameplay with custom turn notifications, AI poker assistan
 
 #### Host Permissions
 ```
-pokernow.club: Required to inject scripts that detect game events, replace turn notification sounds, and display hand tracking information.
+pokernow.com: Required to inject scripts that detect game events, replace turn notification sounds, and display hand tracking information.
 
 gemini.google.com, claude.ai, chatgpt.com: Required to send game state information to AI assistants when the user enables AI integration for poker advice.
 

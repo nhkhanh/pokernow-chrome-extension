@@ -14,7 +14,7 @@
       ? new OriginalWebSocket(url, protocols)
       : new OriginalWebSocket(url);
 
-    if (url && url.includes('pokernow.club')) {
+    if (url && url.includes('pokernow.com')) {
       console.log('[SoundReplacer] 🔌 Intercepted PokerNow WebSocket:', url);
 
       socket.addEventListener('message', (event) => {

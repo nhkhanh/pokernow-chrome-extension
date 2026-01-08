@@ -34,7 +34,7 @@ We do **NOT** collect:
 - Personal identification information (name, email, address)
 - Poker game data, hand histories, or gameplay information
 - Financial information or betting amounts
-- Browsing history outside of pokernow.club
+- Browsing history outside of pokernow.com
 - Passwords or authentication credentials
 
 ## How We Use Information

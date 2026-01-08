@@ -51,7 +51,7 @@ The extension intercepts audio playback on PokerNow.club and replaces turn notif
 
 - Your audio file is stored locally in Chrome's extension storage
 - No data is sent to external servers
-- The extension only runs on pokernow.club
+- The extension only runs on pokernow.com
 
 ## License
 

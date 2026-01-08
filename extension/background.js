@@ -30,7 +30,7 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
   } catch (error) {
     console.error('[Background] Failed to inject WebSocket override:', error);
   }
-}, { url: [{ hostSuffix: 'pokernow.club' }] });
+}, { url: [{ hostSuffix: 'pokernow.com' }] });
 
 let geminiTabId = null;
 let claudeTabId = null;
@@ -268,7 +268,7 @@ What are my options?`;
 
 async function forwardToPokerNow(response) {
   try {
-    const tabs = await chrome.tabs.query({ url: '*://*.pokernow.club/*' });
+    const tabs = await chrome.tabs.query({ url: '*://*.pokernow.com/*' });
     for (const tab of tabs) {
       chrome.tabs.sendMessage(tab.id, {
         type: 'AI_RESPONSE',
@@ -282,7 +282,7 @@ async function forwardToPokerNow(response) {
 
 async function forwardManualAIRequest() {
   try {
-    const tabs = await chrome.tabs.query({ url: '*://*.pokernow.club/*' });
+    const tabs = await chrome.tabs.query({ url: '*://*.pokernow.com/*' });
     for (const tab of tabs) {
       chrome.tabs.sendMessage(tab.id, {
         type: 'MANUAL_AI_REQUEST'

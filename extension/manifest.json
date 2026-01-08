@@ -14,7 +14,7 @@
     "default_path": "sidepanel.html"
   },
   "host_permissions": [
-    "*://*.pokernow.club/*",
+    "*://*.pokernow.com/*",
     "*://gemini.google.com/*",
     "*://claude.ai/*",
     "*://chatgpt.com/*",
@@ -25,7 +25,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.pokernow.club/*"],
+      "matches": ["*://*.pokernow.com/*"],
       "js": ["content.js"],
       "run_at": "document_start"
     },
@@ -48,7 +48,7 @@
   "web_accessible_resources": [
     {
       "resources": ["inject.js", "ws-override.js", "opening-bell-421471.mp3"],
-      "matches": ["*://*.pokernow.club/*"]
+      "matches": ["*://*.pokernow.com/*"]
     }
   ],
   "action": {
