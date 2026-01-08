@@ -272,17 +272,79 @@
         const bb = gs.bBPI ? (socketPlayers[gs.bBPI]?.name || '?') : '?';
         console.log(`[Socket] Hand #${gs.gN} - Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
 
+        // Get in-hand player IDs for position calculation
+        const inHandPlayerIds = gs.iHPI || [];
+
+        // Dispatch hand info to side panel
+        dispatchSocketLog('newgame', `Hand #${gs.gN} - Dealer: ${dealer}, SB: ${sb}, BB: ${bb}`);
+        dispatchSocketLog('info', `Blinds: ${formatBet(gs.smallBlind)}/${formatBet(gs.bigBlind)}`);
+
+        // Log player stacks sorted by seat
+        const inHandPlayers = inHandPlayerIds.slice().sort((a, b) => (socketSeats[a] || 99) - (socketSeats[b] || 99));
+        const stackList = inHandPlayers
+          .map(id => socketPlayers[id])
+          .filter(p => p)
+          .map(p => `${p.name} (${formatBet(p.stack)})`);
+        if (stackList.length > 0) {
+          dispatchSocketLog('info', `Stacks: ${stackList.join(', ')}`);
+        }
+
+        // Calculate and log my position
+        if (socketMyId) {
+          const myPosition = getPositionName(socketMyId, gs.dealerID, gs.sBPI, gs.bBPI, inHandPlayerIds);
+          const myName = socketPlayers[socketMyId]?.name || '?';
+          console.log(`[Socket] You: ${myName} (${myPosition})`);
+          dispatchSocketLog('info', `You: ${myName} (${myPosition})`);
+        }
+
+        // Log who has folded
+        if (gs.pGS) {
+          const foldedPlayers = Object.entries(gs.pGS)
+            .filter(([, status]) => status === 'fold')
+            .map(([id]) => socketPlayers[id]?.name || id);
+          if (foldedPlayers.length > 0) {
+            for (const name of foldedPlayers) {
+              dispatchSocketLog('action', `${name}: FOLD`);
+            }
+          }
+        }
+
         // Log community cards if any
         if (gs.oTC?.['1']?.length > 0) {
           const cards = gs.oTC['1'];
           const streetName = cards.length === 3 ? 'FLOP' : cards.length === 4 ? 'TURN' : cards.length === 5 ? 'RIVER' : 'BOARD';
-          console.log(`[Socket] ${streetName}: ${cards.join(' ')}`);
+          const potStr = gs.pot > 0 ? ` (Pot: ${formatBet(gs.pot)})` : '';
+          console.log(`[Socket] ${streetName}: ${cards.join(' ')}${potStr}`);
+          dispatchSocketLog('street', `${streetName}: ${cards.join(' ')}${potStr}`);
           socketPrevCards = cards.length;
         }
 
-        // Log pot if any
-        if (gs.pot > 0) {
-          console.log(`[Socket] Pot: ${gs.pot}`);
+        // Log current bets on the table
+        if (gs.tB) {
+          const bets = Object.entries(gs.tB)
+            .filter(([, bet]) => typeof bet === 'number' && bet > 0)
+            .map(([id, bet]) => `${socketPlayers[id]?.name || id}: ${formatBet(bet)}`)
+            .join(', ');
+          if (bets) {
+            console.log(`[Socket] Current bets: ${bets}`);
+            dispatchSocketLog('info', `Current bets: ${bets}`);
+          }
+        }
+
+        // Log pot if any (and no community cards logged it already)
+        if (gs.pot > 0 && (!gs.oTC?.['1'] || gs.oTC['1'].length === 0)) {
+          console.log(`[Socket] Pot: ${formatBet(gs.pot)}`);
+          dispatchSocketLog('info', `Pot: ${formatBet(gs.pot)}`);
+        }
+
+        // Log whose turn it is
+        if (gs.pITT) {
+          const turnName = socketPlayers[gs.pITT]?.name || gs.pITT;
+          const isMyTurn = gs.pITT === socketMyId;
+          console.log(`[Socket] TURN: ${turnName}'s turn`);
+          dispatchSocketLog(isMyTurn ? 'myturn' : 'turn', `${turnName}'s turn`, isMyTurn);
+          socketCurrentTurnPlayer = gs.pITT;
+          socketTurnStartTime = Date.now();
         }
       }
 
