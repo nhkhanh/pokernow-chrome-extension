@@ -36,12 +36,13 @@
   // Load and send settings to page
   function sendSettings() {
     if (!isContextValid()) return;
-    chrome.storage.local.get(['customSound', 'enabled', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
+    chrome.storage.local.get(['customSound', 'enabled', 'volume', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
       window.dispatchEvent(new CustomEvent('POKERNOW_SOUND_SETTINGS', {
         detail: {
           customSound: result.customSound || null,
           defaultSound: defaultSoundUrl,
           enabled: result.enabled !== false,
+          volume: result.volume !== undefined ? result.volume : 100,
           aiProvider: result.aiProvider || 'gemini',
           aiMode: result.aiMode || 'auto',
           displayMode: result.displayMode || 'bb'

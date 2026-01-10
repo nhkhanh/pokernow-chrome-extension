@@ -2,6 +2,8 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   const enableToggle = document.getElementById('enableToggle');
+  const volumeSlider = document.getElementById('volumeSlider');
+  const volumeValue = document.getElementById('volumeValue');
   const aiProvider = document.getElementById('aiProvider');
   const aiModeRow = document.getElementById('aiModeRow');
   const aiMode = document.getElementById('aiMode');
@@ -27,8 +29,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Load saved settings
-  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
+  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'volume', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
     enableToggle.checked = result.enabled !== false;
+    const volume = result.volume !== undefined ? result.volume : 100;
+    volumeSlider.value = volume;
+    volumeValue.textContent = volume + '%';
     aiProvider.value = result.aiProvider || 'gemini';
     aiMode.value = result.aiMode || 'auto';
     displayMode.value = result.displayMode || 'bb';
@@ -45,6 +50,27 @@ document.addEventListener('DOMContentLoaded', () => {
       showStatus(enableToggle.checked ? 'Sound replacement enabled' : 'Sound replacement disabled', 'success');
       if (window.analytics) {
         window.analytics.trackSettingsChange('enabled', enableToggle.checked);
+      }
+    });
+  });
+
+  // Volume slider
+  volumeSlider.addEventListener('input', () => {
+    const volume = volumeSlider.value;
+    volumeValue.textContent = volume + '%';
+
+    // Update volume for currently playing preview if any
+    if (currentAudio) {
+      currentAudio.volume = volume / 100;
+    }
+  });
+
+  volumeSlider.addEventListener('change', () => {
+    const volume = parseInt(volumeSlider.value);
+    chrome.storage.local.set({ volume: volume }, () => {
+      showStatus(`Volume set to ${volume}%`, 'success');
+      if (window.analytics) {
+        window.analytics.trackSettingsChange('volume', volume);
       }
     });
   });
@@ -135,15 +161,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Preview sound
   playBtn.addEventListener('click', () => {
-    chrome.storage.local.get(['customSound'], (result) => {
+    chrome.storage.local.get(['customSound', 'volume'], (result) => {
       if (result.customSound) {
         // Stop any currently playing audio
         if (currentAudio) {
           currentAudio.pause();
           currentAudio = null;
         }
-        
+
         currentAudio = new Audio(result.customSound);
+        currentAudio.volume = (result.volume !== undefined ? result.volume : 100) / 100;
         currentAudio.play().catch(err => {
           showStatus('Error playing sound', 'error');
           console.error(err);

@@ -656,6 +656,7 @@
   let customSoundDataUrl = null;
   let defaultSoundUrl = null;
   let customSoundEnabled = true;
+  let soundVolume = 1.0; // 0.0 to 1.0
   let aiProvider = 'gemini'; // 'gemini', 'claude', or 'chatgpt'
   let aiMode = 'auto'; // 'auto' or 'manual'
   let lastSoundTime = 0;
@@ -875,10 +876,11 @@
     customSoundDataUrl = e.detail.customSound;
     defaultSoundUrl = e.detail.defaultSound;
     customSoundEnabled = e.detail.enabled;
+    soundVolume = (e.detail.volume !== undefined ? e.detail.volume : 100) / 100;
     aiProvider = e.detail.aiProvider || 'gemini';
     aiMode = e.detail.aiMode || 'auto';
     displayMode = e.detail.displayMode || 'bb';
-    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, hasDefault: !!defaultSoundUrl, enabled: customSoundEnabled, aiProvider, aiMode, displayMode });
+    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, hasDefault: !!defaultSoundUrl, enabled: customSoundEnabled, volume: soundVolume, aiProvider, aiMode, displayMode });
   });
 
   // Listen for manual AI request from side panel
@@ -931,11 +933,11 @@
     // For file URLs (default sound) or fallback, use Audio element
     try {
       const audio = new OriginalAudio(soundUrl);
-      audio.volume = 1.0;
+      audio.volume = soundVolume;
       OriginalPlay.call(audio).catch(err => {
         console.error('[SoundReplacer] Play error:', err);
       });
-      console.log('[SoundReplacer] ▶ Playing sound (Audio element):', isDataUrl ? 'custom' : 'default');
+      console.log('[SoundReplacer] ▶ Playing sound (Audio element):', isDataUrl ? 'custom' : 'default', 'volume:', soundVolume);
       return true;
     } catch (err) {
       console.error('[SoundReplacer] Error:', err);
@@ -955,10 +957,13 @@
 
     ctx.decodeAudioData(bytes.buffer.slice(0), (buffer) => {
       const source = ctx.createBufferSource();
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = soundVolume;
       source.buffer = buffer;
-      source.connect(ctx.destination);
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
       source.start(0);
-      console.log('[SoundReplacer] ▶ Playing custom sound (AudioContext)');
+      console.log('[SoundReplacer] ▶ Playing custom sound (AudioContext), volume:', soundVolume);
     }, (err) => {
       console.error('[SoundReplacer] decodeAudioData error:', err);
     });
