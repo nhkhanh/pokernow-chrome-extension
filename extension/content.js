@@ -17,6 +17,18 @@
     });
   }
 
+  // Inject the hand evaluator module first
+  const handEvaluatorScript = document.createElement('script');
+  handEvaluatorScript.src = chrome.runtime.getURL('hand-evaluator.js');
+  handEvaluatorScript.async = false;
+  (document.documentElement || document.head).appendChild(handEvaluatorScript);
+
+  // Inject the auto-play engine module second
+  const autoPlayEngineScript = document.createElement('script');
+  autoPlayEngineScript.src = chrome.runtime.getURL('autoplay-engine.js');
+  autoPlayEngineScript.async = false;
+  (document.documentElement || document.head).appendChild(autoPlayEngineScript);
+
   // Inject the main script via src (inline scripts are blocked by CSP)
   // Use async=false to try to block other scripts until ours loads
   const script = document.createElement('script');
@@ -33,10 +45,42 @@
   // Default sound URL
   const defaultSoundUrl = chrome.runtime.getURL('opening-bell-421471.mp3');
 
+  // Default auto-play settings
+  function getDefaultAutoPlaySettings() {
+    return {
+      enabled: false,
+      confirmationMode: true,
+      confirmationDelay: 5000,
+      actingDelay: 1000,
+      preset: 'TAG',
+      ranges: window.HandEvaluator ? {
+        UTG: window.HandEvaluator.getPresetRange('TAG', 'UTG'),
+        MP: window.HandEvaluator.getPresetRange('TAG', 'MP'),
+        CO: window.HandEvaluator.getPresetRange('TAG', 'CO'),
+        BTN: window.HandEvaluator.getPresetRange('TAG', 'BTN'),
+        SB: window.HandEvaluator.getPresetRange('TAG', 'SB'),
+        BB: window.HandEvaluator.getPresetRange('TAG', 'BB')
+      } : {},
+      raiseSizing: {
+        unopened: 2.5,
+        'facing-limp': 3,
+        '3bet': 3,
+        '4bet': 2.5
+      },
+      stackThresholds: {
+        short: 20,
+        deep: 100
+      }
+    };
+  }
+
   // Load and send settings to page
   function sendSettings() {
     if (!isContextValid()) return;
-    chrome.storage.local.get(['customSound', 'enabled', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
+    chrome.storage.local.get(['customSound', 'enabled', 'aiProvider', 'aiMode', 'displayMode', 'autoPlayEnabled', 'autoPlaySettings'], (result) => {
+      // Initialize auto-play settings if not present
+      const autoPlaySettings = result.autoPlaySettings || getDefaultAutoPlaySettings();
+
       window.dispatchEvent(new CustomEvent('POKERNOW_SOUND_SETTINGS', {
         detail: {
           customSound: result.customSound || null,
@@ -44,7 +88,9 @@
           enabled: result.enabled !== false,
           aiProvider: result.aiProvider || 'gemini',
           aiMode: result.aiMode || 'auto',
-          displayMode: result.displayMode || 'bb'
+          displayMode: result.displayMode || 'bb',
+          autoPlayEnabled: result.autoPlayEnabled || false,
+          autoPlaySettings: autoPlaySettings
         }
       }));
     });
@@ -76,6 +122,28 @@
     });
   });
 
+  // Listen for auto-play events from inject.js
+  window.addEventListener('POKERNOW_AUTO_ACTION_PREVIEW', (e) => {
+    safeSendMessage({
+      type: 'AUTO_PLAY_PREVIEW',
+      action: e.detail.action,
+      delay: e.detail.delay
+    });
+  });
+
+  window.addEventListener('POKERNOW_AUTO_ACTION_EXECUTED', (e) => {
+    safeSendMessage({
+      type: 'AUTO_PLAY_EXECUTED',
+      action: e.detail.action
+    });
+  });
+
+  window.addEventListener('POKERNOW_CANCEL_AUTO_ACTION', () => {
+    safeSendMessage({
+      type: 'AUTO_PLAY_CANCELLED'
+    });
+  });
+
   // Listen for AI response from background and forward to inject.js
   // Also listen for manual AI request from side panel
   if (isContextValid()) {
@@ -89,6 +157,10 @@
       } else if (message.type === 'MANUAL_AI_REQUEST') {
         // Forward manual AI request to inject.js
         window.dispatchEvent(new CustomEvent('POKERNOW_MANUAL_AI_REQUEST'));
+        sendResponse({ status: 'ok' });
+      } else if (message.type === 'CANCEL_AUTO_ACTION') {
+        // Forward cancel request to inject.js
+        window.dispatchEvent(new CustomEvent('POKERNOW_CANCEL_AUTO_ACTION'));
         sendResponse({ status: 'ok' });
       }
       return true;

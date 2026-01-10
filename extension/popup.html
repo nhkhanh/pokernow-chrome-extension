@@ -289,7 +289,24 @@
       </select>
     </div>
   </div>
-  
+
+  <div class="section">
+    <div class="toggle-row">
+      <span class="toggle-label">Preflop Auto-Play</span>
+      <label class="toggle">
+        <input type="checkbox" id="autoPlayToggle">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div id="autoPlayInfo" style="margin-top: 8px; display: none;">
+      <button id="configureRangesBtn" style="width: 100%; background: #4CAF50; color: white;">⚙️ Configure Ranges</button>
+      <div style="margin-top: 8px; font-size: 12px; color: #666;">
+        <div>Strategy: <span id="currentPreset" style="font-weight: 500;">TAG</span></div>
+        <div>Confirmation: <span id="confirmationStatus" style="font-weight: 500;">5s delay</span></div>
+      </div>
+    </div>
+  </div>
+
   <div class="section">
     <label>Custom "Your Turn" Sound</label>
     <div class="file-input-wrapper">

@@ -47,7 +47,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["inject.js", "ws-override.js", "opening-bell-421471.mp3"],
+      "resources": ["inject.js", "ws-override.js", "hand-evaluator.js", "autoplay-engine.js", "opening-bell-421471.mp3"],
       "matches": ["*://*.pokernow.com/*"]
     }
   ],

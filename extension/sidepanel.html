@@ -13,6 +13,31 @@
       <button id="clearBtn" title="Clear log">Clear</button>
     </div>
   </div>
+
+  <div id="autoPlayPanel" class="auto-play-panel" style="display: none;">
+    <div class="auto-play-header">
+      <span class="auto-play-title">🎰 Auto-Play</span>
+      <span id="autoPlayStatus" class="auto-play-status">Ready</span>
+    </div>
+    <div id="autoPlayAction" class="auto-play-action" style="display: none;">
+      <div class="action-info">
+        <div class="action-label">Action:</div>
+        <div id="actionType" class="action-type">FOLD</div>
+        <div id="actionReason" class="action-reason">72o in UTG unopened</div>
+      </div>
+      <div class="countdown-bar">
+        <div id="countdownProgress" class="countdown-progress"></div>
+        <div id="countdownText" class="countdown-text">5s</div>
+      </div>
+      <div class="override-buttons">
+        <button id="cancelAutoBtn" class="btn-override btn-cancel">✕ Cancel</button>
+        <button id="foldAutoBtn" class="btn-override">Fold</button>
+        <button id="callAutoBtn" class="btn-override">Call</button>
+        <button id="raiseAutoBtn" class="btn-override">Raise</button>
+      </div>
+    </div>
+  </div>
+
   <div id="log" class="log-container"></div>
   <script src="analytics.js"></script>
   <script src="sidepanel.js"></script>

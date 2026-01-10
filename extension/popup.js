@@ -6,6 +6,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const aiModeRow = document.getElementById('aiModeRow');
   const aiMode = document.getElementById('aiMode');
   const displayMode = document.getElementById('displayMode');
+  const autoPlayToggle = document.getElementById('autoPlayToggle');
+  const autoPlayInfo = document.getElementById('autoPlayInfo');
+  const configureRangesBtn = document.getElementById('configureRangesBtn');
+  const currentPreset = document.getElementById('currentPreset');
+  const confirmationStatus = document.getElementById('confirmationStatus');
   const soundFile = document.getElementById('soundFile');
   const fileBtn = document.getElementById('fileBtn');
   const currentSound = document.getElementById('currentSound');
@@ -26,13 +31,28 @@ document.addEventListener('DOMContentLoaded', () => {
     aiModeRow.style.display = 'flex';
   }
 
+  // Update auto-play info visibility
+  function updateAutoPlayInfo() {
+    autoPlayInfo.style.display = autoPlayToggle.checked ? 'block' : 'none';
+  }
+
   // Load saved settings
-  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider', 'aiMode', 'displayMode'], (result) => {
+  chrome.storage.local.get(['customSound', 'soundFileName', 'enabled', 'aiProvider', 'aiMode', 'displayMode', 'autoPlayEnabled', 'autoPlaySettings'], (result) => {
     enableToggle.checked = result.enabled !== false;
     aiProvider.value = result.aiProvider || 'gemini';
     aiMode.value = result.aiMode || 'auto';
     displayMode.value = result.displayMode || 'bb';
+    autoPlayToggle.checked = result.autoPlayEnabled || false;
     updateAiModeVisibility();
+    updateAutoPlayInfo();
+
+    // Update auto-play info display
+    if (result.autoPlaySettings) {
+      const settings = result.autoPlaySettings;
+      currentPreset.textContent = settings.preset || 'TAG';
+      const confirmDelay = (settings.confirmationDelay || 5000) / 1000;
+      confirmationStatus.textContent = settings.confirmationMode !== false ? `${confirmDelay}s delay` : 'Instant';
+    }
 
     if (result.customSound && result.soundFileName) {
       showCurrentSound(result.soundFileName);
@@ -91,6 +111,22 @@ document.addEventListener('DOMContentLoaded', () => {
         window.analytics.trackSettingsChange('display_mode', displayMode.value);
       }
     });
+  });
+
+  // Auto-Play toggle
+  autoPlayToggle.addEventListener('change', () => {
+    chrome.storage.local.set({ autoPlayEnabled: autoPlayToggle.checked }, () => {
+      showStatus(autoPlayToggle.checked ? 'Preflop auto-play enabled' : 'Preflop auto-play disabled', 'success');
+      updateAutoPlayInfo();
+      if (window.analytics) {
+        window.analytics.trackSettingsChange('auto_play_enabled', autoPlayToggle.checked);
+      }
+    });
+  });
+
+  // Configure Ranges button
+  configureRangesBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('autoplay-settings.html') });
   });
 
   // File selection

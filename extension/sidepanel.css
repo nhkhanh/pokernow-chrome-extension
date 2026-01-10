@@ -237,3 +237,134 @@ body {
 .empty-state p {
   margin-bottom: 8px;
 }
+
+/* Auto-Play Panel */
+.auto-play-panel {
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  padding: 12px 16px;
+}
+
+.auto-play-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.auto-play-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+
+.auto-play-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-weight: 500;
+}
+
+.auto-play-status.active {
+  background: #fff3cd;
+  color: #856404;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.auto-play-action {
+  margin-top: 12px;
+}
+
+.action-info {
+  margin-bottom: 12px;
+}
+
+.action-label {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.action-type {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a73e8;
+  margin-bottom: 4px;
+}
+
+.action-type.fold { color: #dc2626; }
+.action-type.call { color: #2563eb; }
+.action-type.check { color: #6b7280; }
+.action-type.raise { color: #16a34a; }
+
+.action-reason {
+  font-size: 12px;
+  color: #666;
+}
+
+.countdown-bar {
+  position: relative;
+  height: 32px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.countdown-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50, #2e7d32);
+  transition: width 0.1s linear;
+}
+
+.countdown-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 700;
+  font-size: 14px;
+  color: #333;
+  z-index: 1;
+}
+
+.override-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 6px;
+}
+
+.btn-override {
+  padding: 8px 4px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #1a73e8;
+  color: white;
+  transition: all 0.2s;
+}
+
+.btn-override:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.btn-override.btn-cancel {
+  background: #dc2626;
+}
+
+.btn-override.btn-cancel:hover {
+  background: #b91c1c;
+}
