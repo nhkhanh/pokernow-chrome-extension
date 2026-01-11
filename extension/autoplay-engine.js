@@ -30,10 +30,22 @@
 
     console.log('[AutoPlay] Opponent actions:', opponentActions);
 
-    // Count raises/bets
-    const raiseCount = opponentActions.filter(a =>
-      a.includes('raise') || a.includes('bet') || a.includes('all-in')
-    ).length;
+    // Helper to extract bet size in BB from action string like "bet 2.5bb" or "raise 6bb"
+    function extractBetSize(action) {
+      const match = action.match(/(\d+\.?\d*)\s*bb/i);
+      return match ? parseFloat(match[1]) : 0;
+    }
+
+    // Count raises/bets (only count bets > 1BB as raises, since ≤1BB is likely blind/limp)
+    const raiseCount = opponentActions.filter(a => {
+      if (a.includes('all-in')) return true;
+      if (a.includes('raise')) return true;
+      if (a.includes('bet')) {
+        const betSize = extractBetSize(a);
+        return betSize > 1; // Only count bets > 1BB as raises
+      }
+      return false;
+    }).length;
 
     const limpCount = opponentActions.filter(a =>
       a.includes('call') || a.includes('limp')
@@ -63,8 +75,9 @@
     const pos = position.toUpperCase();
 
     // Map various position names to standard ones
-    if (pos.includes('UTG') || pos === 'EP' || pos === 'EARLY') return 'UTG';
-    if (pos.includes('MP') || pos === 'MIDDLE') return 'MP';
+    // Check specific positions first before checking includes()
+    if (pos === 'UTG' || pos === 'EP' || pos === 'EARLY') return 'UTG';
+    if (pos.includes('UTG+') || pos.includes('MP') || pos === 'MIDDLE') return 'MP'; // UTG+1, UTG+2 are MP
     if (pos.includes('CO') || pos === 'CUT' || pos === 'CUTOFF') return 'CO';
     if (pos.includes('BTN') || pos.includes('BUTTON') || pos === 'D') return 'BTN';
     if (pos.includes('SB') || pos === 'SMALL') return 'SB';
@@ -254,6 +267,17 @@
     let action = getActionFromRange(hand, scenarioRange);
 
     if (!action || action === 'fold') {
+      // Special case: BB facing limps can check for free instead of folding
+      if (normalizedPosition === 'BB' && scenario === 'facing-limp' && toCall === 0) {
+        console.log('[AutoPlay] BB facing limps - checking instead of folding');
+        return {
+          action: 'check',
+          hand: hand,
+          position: normalizedPosition,
+          scenario: scenario,
+          reasoning: `${hand} in BB facing limps: check (free)`
+        };
+      }
       return {
         action: 'fold',
         hand: hand,

@@ -1917,15 +1917,15 @@
     if (autoAction && autoAction.action !== 'pause') {
       console.log('[AutoPlay] Decision:', autoAction);
 
-      // Only auto-execute FOLD actions
-      if (autoAction.action === 'fold') {
+      // Only auto-execute FOLD and CHECK actions (low-risk actions)
+      if (autoAction.action === 'fold' || autoAction.action === 'check') {
         scheduleAutoAction(autoAction);
         // Suppress turn sound when autoplay is handling the action
         isMyTurnPending = false;
         return true;
       } else {
-        // Log non-fold actions but don't auto-execute
-        console.log(`[AutoPlay] ${autoAction.action.toUpperCase()} detected but not auto-executing (only fold is auto-played)`);
+        // Log non-fold/check actions but don't auto-execute
+        console.log(`[AutoPlay] ${autoAction.action.toUpperCase()} detected but not auto-executing (only fold/check is auto-played)`);
         return false;
       }
     } else {
