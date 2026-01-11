@@ -1602,6 +1602,17 @@
    * @returns {number} Big blind amount
    */
   function getBigBlind() {
+    // Try to read from blind display (format: "SB / BB" e.g., "2 / 5")
+    const blindValue = document.querySelector('.blind-value');
+    if (blindValue) {
+      const normalValues = blindValue.querySelectorAll('.chips-value .normal-value');
+      if (normalValues.length >= 2) {
+        // Second value is big blind
+        const bb = parseFloat(normalValues[1].textContent.replace(/,/g, ''));
+        if (bb > 0) return bb;
+      }
+    }
+
     // Try to parse from hand log
     for (let i = 0; i < handLog.length; i++) {
       const entry = handLog[i];
@@ -1612,17 +1623,14 @@
         }
       }
     }
-    // Fallback: try to find BB player and their bet
-    const players = document.querySelectorAll('.table-player');
-    for (const playerEl of players) {
-      const statusIcon = playerEl.querySelector('.table-player-status-icon');
-      if (statusIcon && statusIcon.textContent === 'BB') {
-        const betEl = playerEl.querySelector('.table-player-bet-value');
-        if (betEl) {
-          return parseFloat(betEl.textContent.replace(/,/g, '')) || 100;
-        }
-      }
+
+    // Calculate from stack and stackBB if available
+    const stack = getMyStack();
+    const stackBB = getMyStackBB();
+    if (stack > 0 && stackBB > 0) {
+      return Math.round(stack / stackBB);
     }
+
     return 100; // Default fallback
   }
 
