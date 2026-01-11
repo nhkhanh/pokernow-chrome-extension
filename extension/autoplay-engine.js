@@ -20,11 +20,22 @@
       if (player.isFold || player.isOffline) continue;
 
       if (player.action) {
+        const actionLower = player.action.toLowerCase();
+
         // Skip pure blind postings (SB/BB with no further action)
-        if (player.action === 'SB' || player.action === 'BB') {
+        if (actionLower === 'sb' || actionLower === 'bb') {
           continue;
         }
-        opponentActions.push(player.action.toLowerCase());
+
+        // Skip small bets that are just blind postings (e.g., "bet 0.4bb" for SB)
+        if (actionLower.includes('bet')) {
+          const betSize = extractBetSize(actionLower);
+          if (betSize <= 1) {
+            continue; // Skip blind postings
+          }
+        }
+
+        opponentActions.push(actionLower);
       }
     }
 
@@ -244,24 +255,18 @@
 
     // Get range configuration for this position and scenario
     const ranges = settings.ranges || {};
-    console.log('[AutoPlay] Available ranges:', Object.keys(ranges));
-
     const positionRanges = ranges[normalizedPosition];
 
     if (!positionRanges) {
-      console.log(`[AutoPlay] No ranges configured for position ${normalizedPosition}. Available: ${Object.keys(ranges).join(', ') || 'none'}`);
+      console.log(`[AutoPlay] No ranges configured for position ${normalizedPosition}`);
       return null;
     }
-
-    console.log(`[AutoPlay] ${normalizedPosition} scenarios:`, Object.keys(positionRanges));
 
     const scenarioRange = positionRanges[scenario];
     if (!scenarioRange) {
-      console.log(`[AutoPlay] No range configured for scenario ${scenario}. Available: ${Object.keys(positionRanges).join(', ') || 'none'}`);
+      console.log(`[AutoPlay] No range configured for scenario ${scenario}`);
       return null;
     }
-
-    console.log(`[AutoPlay] ${scenario} actions:`, Object.keys(scenarioRange));
 
     // Get action from range
     let action = getActionFromRange(hand, scenarioRange);

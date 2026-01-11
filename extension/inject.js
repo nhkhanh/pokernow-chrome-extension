@@ -1182,8 +1182,6 @@
     // Find max bet for determining raises
     const maxBet = Math.max(...playerList.map(p => p.betAmount), 0);
     const bbAmount = 1; // Standard BB
-    // Count how many players have the max bet (to distinguish raise vs call)
-    const playersAtMaxBet = playerList.filter(p => p.betAmount === maxBet && maxBet > bbAmount).length;
 
     // Second pass: determine action types
     let raiserFound = false;
@@ -1194,7 +1192,13 @@
       if (p.isFold) {
         action = 'fold';
       } else if (p.rawAction) {
-        action = p.rawAction.toLowerCase();
+        // Filter out status messages that aren't actions
+        const rawLower = p.rawAction.toLowerCase();
+        if (rawLower.includes('next hand') || rawLower.includes('offline') || rawLower.includes('away')) {
+          action = ''; // Not an action, just status
+        } else {
+          action = rawLower;
+        }
       } else if (p.betAmount > 0) {
         if (isPreflop) {
           if (p.name === sbPlayer && p.betAmount === 0.5) {
@@ -1203,16 +1207,23 @@
             action = 'BB';
           } else if (p.betAmount === bbAmount) {
             action = 'limp';
-          } else if (p.betAmount > bbAmount && p.betAmount === maxBet) {
-            // First player at max bet is raiser, rest are callers
-            if (!raiserFound) {
+          } else if (p.betAmount > bbAmount) {
+            // Any bet > 1BB: determine if raise or call
+            // If player has max bet and is the first we see at max bet, they're the raiser
+            // If player has less than max but >= 2BB, they raised and got re-raised
+            if (p.betAmount === maxBet) {
+              if (!raiserFound) {
+                action = `raise ${p.betText}`;
+                raiserFound = true;
+              } else {
+                action = `call ${p.betText}`;
+              }
+            } else if (p.betAmount >= 2) {
+              // Player bet >= 2BB but someone else is higher - they raised and got re-raised
               action = `raise ${p.betText}`;
-              raiserFound = true;
             } else {
               action = `call ${p.betText}`;
             }
-          } else if (p.betAmount > bbAmount && p.betAmount < maxBet) {
-            action = `call ${p.betText}`;
           } else {
             action = `bet ${p.betText}`;
           }
