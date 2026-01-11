@@ -1913,11 +1913,13 @@
     // Get auto-action from engine
     const autoAction = window.AutoPlayEngine.getAutoAction(gameState, autoPlaySettings);
 
-    if (autoAction) {
+    if (autoAction && autoAction.action !== 'pause') {
       console.log('[AutoPlay] Decision:', autoAction);
       scheduleAutoAction(autoAction);
+      // Suppress turn sound when autoplay is handling the action
+      isMyTurnPending = false;
     } else {
-      console.log('[AutoPlay] No action determined');
+      console.log('[AutoPlay] No action determined - turn sound will play');
     }
   }
 
