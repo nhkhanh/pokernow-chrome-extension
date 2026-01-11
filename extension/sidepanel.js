@@ -7,8 +7,38 @@
   const clearBtn = document.getElementById('clearBtn');
   const askAiBtn = document.getElementById('askAiBtn');
 
+  // Auto-play panel elements
+  const autoPlayPanel = document.getElementById('autoPlayPanel');
+  const autoPlayStatus = document.getElementById('autoPlayStatus');
+  const autoPlayAction = document.getElementById('autoPlayAction');
+  const actionType = document.getElementById('actionType');
+  const actionReason = document.getElementById('actionReason');
+  const countdownProgress = document.getElementById('countdownProgress');
+  const countdownText = document.getElementById('countdownText');
+  const cancelAutoBtn = document.getElementById('cancelAutoBtn');
+  const foldAutoBtn = document.getElementById('foldAutoBtn');
+  const callAutoBtn = document.getElementById('callAutoBtn');
+  const raiseAutoBtn = document.getElementById('raiseAutoBtn');
+
+  let countdownInterval = null;
+  let countdownEndTime = null;
+
   // Show empty state initially
   showEmptyState();
+
+  // Load auto-play settings to show/hide panel
+  chrome.storage.local.get(['autoPlayEnabled'], (result) => {
+    if (result.autoPlayEnabled) {
+      autoPlayPanel.style.display = 'block';
+    }
+  });
+
+  // Listen for auto-play settings changes
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.autoPlayEnabled) {
+      autoPlayPanel.style.display = changes.autoPlayEnabled.newValue ? 'block' : 'none';
+    }
+  });
 
   // Clear button handler
   clearBtn.addEventListener('click', () => {
@@ -168,8 +198,92 @@
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'POKERNOW_GAME_LOG') {
       addLogEntry(message.logType, message.message);
+    } else if (message.type === 'AUTO_PLAY_PREVIEW') {
+      showAutoPlayPreview(message.action, message.delay);
+    } else if (message.type === 'AUTO_PLAY_EXECUTED') {
+      hideAutoPlayPreview();
+    } else if (message.type === 'AUTO_PLAY_CANCELLED') {
+      hideAutoPlayPreview();
     }
   });
+
+  // Auto-play button handlers
+  cancelAutoBtn.addEventListener('click', () => {
+    sendCancelAutoAction();
+    hideAutoPlayPreview();
+  });
+
+  foldAutoBtn.addEventListener('click', () => {
+    sendManualAction('fold');
+  });
+
+  callAutoBtn.addEventListener('click', () => {
+    sendManualAction('call');
+  });
+
+  raiseAutoBtn.addEventListener('click', () => {
+    sendManualAction('raise');
+  });
+
+  function showAutoPlayPreview(action, delay) {
+    autoPlayStatus.textContent = 'Active';
+    autoPlayStatus.classList.add('active');
+    autoPlayAction.style.display = 'block';
+
+    // Set action info
+    const actionText = action.action.toUpperCase();
+    actionType.textContent = actionText + (action.amount ? ` $${action.amount}` : '');
+    actionType.className = `action-type ${action.action}`;
+    actionReason.textContent = action.reasoning || `${action.hand} - ${action.position}`;
+
+    // Start countdown
+    countdownEndTime = Date.now() + delay;
+    updateCountdown();
+    countdownInterval = setInterval(updateCountdown, 100);
+  }
+
+  function hideAutoPlayPreview() {
+    autoPlayStatus.textContent = 'Ready';
+    autoPlayStatus.classList.remove('active');
+    autoPlayAction.style.display = 'none';
+
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+  }
+
+  function updateCountdown() {
+    if (!countdownEndTime) return;
+
+    const remaining = Math.max(0, countdownEndTime - Date.now());
+    const totalDelay = countdownEndTime - (Date.now() - remaining);
+    const progress = (1 - remaining / totalDelay) * 100;
+
+    countdownProgress.style.width = progress + '%';
+    countdownText.textContent = (remaining / 1000).toFixed(1) + 's';
+
+    if (remaining === 0 && countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+  }
+
+  function sendCancelAutoAction() {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'CANCEL_AUTO_ACTION' })
+          .catch(err => console.error('[SidePanel] Error cancelling auto-action:', err));
+      }
+    });
+  }
+
+  function sendManualAction(actionType) {
+    // Cancel auto-action and let user act manually
+    sendCancelAutoAction();
+    hideAutoPlayPreview();
+    // TODO: Could potentially trigger the action directly if needed
+  }
 
   // Track sidepanel open
   if (window.analytics) {

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Auto-Play Settings - PokerNow Extension</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      margin: 0 0 24px 0;
+      font-size: 24px;
+      color: #1a1a1a;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 8px;
+    }
+
+    .preset-selector {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .preset-btn {
+      padding: 16px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+    }
+
+    .preset-btn:hover {
+      border-color: #4CAF50;
+      background: #f9fff9;
+    }
+
+    .preset-btn.active {
+      border-color: #4CAF50;
+      background: #e8f5e9;
+    }
+
+    .preset-name {
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+
+    .preset-desc {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .setting-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-label {
+      font-weight: 500;
+      flex: 1;
+    }
+
+    .setting-desc {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    .setting-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type="number"] {
+      width: 80px;
+      padding: 6px 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    input[type="number"]:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+
+    .toggle {
+      position: relative;
+      width: 48px;
+      height: 26px;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: 0.3s;
+      border-radius: 26px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+
+    .toggle input:checked + .toggle-slider {
+      background-color: #4CAF50;
+    }
+
+    .toggle input:checked + .toggle-slider:before {
+      transform: translateX(22px);
+    }
+
+    .unit {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid #eee;
+    }
+
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-primary {
+      background: #4CAF50;
+      color: white;
+      flex: 1;
+    }
+
+    .btn-primary:hover {
+      background: #45a049;
+    }
+
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .status {
+      padding: 12px;
+      border-radius: 6px;
+      text-align: center;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .status.success {
+      display: block;
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .warning-box {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 12px 16px;
+      margin-bottom: 24px;
+      border-radius: 4px;
+    }
+
+    .warning-box strong {
+      color: #856404;
+    }
+
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #2196F3;
+      padding: 12px 16px;
+      margin-top: 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #1565c0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1><span>🎰</span> Preflop Auto-Play Settings</h1>
+
+    <div class="warning-box">
+      <strong>⚠️ Important:</strong> This feature is for educational and practice purposes only. Use responsibly and in accordance with PokerNow's terms of service.
+    </div>
+
+    <div class="section">
+      <div class="section-title">Strategy Preset</div>
+      <div class="preset-selector">
+        <div class="preset-btn" data-preset="tight">
+          <div class="preset-name">Tight</div>
+          <div class="preset-desc">Play only premium hands. Very conservative.</div>
+        </div>
+        <div class="preset-btn active" data-preset="TAG">
+          <div class="preset-name">TAG (Recommended)</div>
+          <div class="preset-desc">Tight-Aggressive. Solid, balanced strategy.</div>
+        </div>
+        <div class="preset-btn" data-preset="LAG">
+          <div class="preset-name">LAG</div>
+          <div class="preset-desc">Loose-Aggressive. Play more hands aggressively.</div>
+        </div>
+        <div class="preset-btn" data-preset="loose">
+          <div class="preset-name">Loose</div>
+          <div class="preset-desc">Very wide range. High variance.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Safety & Confirmation</div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Confirmation Mode</div>
+          <div class="setting-desc">Show countdown before executing action</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="confirmationMode" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-row" id="confirmationDelayRow">
+        <div>
+          <div class="setting-label">Confirmation Delay</div>
+          <div class="setting-desc">Time to review and cancel action</div>
+        </div>
+        <div class="setting-control">
+          <input type="number" id="confirmationDelay" min="3" max="10" value="5">
+          <span class="unit">seconds</span>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Acting Delay (No Confirmation)</div>
+          <div class="setting-desc">Delay to appear human when confirmation is off</div>
+        </div>
+        <div class="setting-control">
+          <input type="number" id="actingDelay" min="500" max="3000" step="100" value="1000">
+          <span class="unit">ms</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Raise Sizing</div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Unopened Pot</div>
+          <div class="setting-desc">Standard open-raise size</div>
+        </div>
+        <div class="setting-control">
+          <input type="number" id="unopenedSize" min="2" max="5" step="0.5" value="2.5">
+          <span class="unit">BB</span>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Facing Limper(s)</div>
+          <div class="setting-desc">Base size + 1BB per limper</div>
+        </div>
+        <div class="setting-control">
+          <input type="number" id="limpSize" min="2" max="5" step="0.5" value="3">
+          <span class="unit">BB</span>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">3-Bet Size</div>
+          <div class="setting-desc">Multiplier of opponent's raise</div>
+        </div>
+        <div class="setting-control">
+          <input type="number" id="threeBetSize" min="2" max="4" step="0.25" value="3">
+          <span class="unit">x</span>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">4-Bet Size</div>
+          <div class="setting-desc">Multiplier of opponent's 3-bet</div>
+        </div>
+        <div class="setting-control">
+          <input type="number" id="fourBetSize" min="2" max="3.5" step="0.25" value="2.5">
+          <span class="unit">x</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Stack Adjustments</div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Short Stack Threshold</div>
+          <div class="setting-desc">Auto-pause below this stack size</div>
+        </div>
+        <div class="setting-control">
+          <input type="number" id="shortStackThreshold" min="10" max="30" value="20">
+          <span class="unit">BB</span>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Deep Stack Threshold</div>
+          <div class="setting-desc">Consider wider ranges above this</div>
+        </div>
+        <div class="setting-control">
+          <input type="number" id="deepStackThreshold" min="50" max="200" value="100">
+          <span class="unit">BB</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      💡 <strong>Tip:</strong> The selected preset determines which hands to play from each position. Ranges are automatically adjusted based on position (UTG, MP, CO, BTN, SB, BB) and scenario (unopened, facing raise, facing 3-bet).
+    </div>
+
+    <div class="button-row">
+      <button class="btn-secondary" id="cancelBtn">Cancel</button>
+      <button class="btn-primary" id="saveBtn">Save Settings</button>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script src="autoplay-settings.js"></script>
+</body>
+</html>

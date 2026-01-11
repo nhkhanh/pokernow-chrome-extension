@@ -666,6 +666,13 @@
   const TURN_SOUND_WINDOW_MS = 2000; // Window to catch sound after turn detected (increased)
   const SOUND_CHECK_DELAY_MS = 150; // Delay before fallback sound plays
 
+  // Auto-play settings
+  let autoPlayEnabled = false;
+  let autoPlaySettings = {};
+  let autoActionTimer = null;
+  let autoActionCancelled = false;
+  let currentAutoAction = null;
+
   // Last action highlight tracking
   let previousPlayerStates = new Map(); // Map of playerName -> {action, betAmount, isFold}
 
@@ -880,7 +887,9 @@
     aiProvider = e.detail.aiProvider || 'gemini';
     aiMode = e.detail.aiMode || 'auto';
     displayMode = e.detail.displayMode || 'bb';
-    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, hasDefault: !!defaultSoundUrl, enabled: customSoundEnabled, volume: soundVolume, aiProvider, aiMode, displayMode });
+    autoPlayEnabled = e.detail.autoPlayEnabled || false;
+    autoPlaySettings = e.detail.autoPlaySettings || {};
+    console.log('[SoundReplacer] Settings updated:', { hasSound: !!customSoundDataUrl, hasDefault: !!defaultSoundUrl, enabled: customSoundEnabled, volume: soundVolume, aiProvider, aiMode, displayMode, autoPlayEnabled });
   });
 
   // Listen for manual AI request from side panel
@@ -1483,6 +1492,436 @@
     }
   }
 
+  // ============================================
+  // AUTO-PLAY FUNCTIONS
+  // ============================================
+
+  /**
+   * Extract current hole cards from hand log
+   * @returns {Array<string>|null} Array of two cards or null
+   */
+  function getCurrentHoleCards() {
+    // Try to find cards from hand log first
+    for (let i = handLog.length - 1; i >= 0; i--) {
+      const entry = handLog[i];
+      if (entry.message && entry.message.startsWith('Your cards:')) {
+        const cardStr = entry.message.replace('Your cards:', '').trim();
+        const cards = cardStr.split(' ').map(c => c.replace(/[♥♦♣♠]/g, (m) => {
+          return {  '♥': 'h', '♦': 'd', '♣': 'c', '♠': 's' }[m] || m;
+        }));
+        if (cards.length === 2) {
+          return cards;
+        }
+      }
+    }
+
+    // Fallback: extract from HTML (for mid-game joins)
+    const youPlayer = document.querySelector('.you-player');
+    if (youPlayer) {
+      const cardContainers = youPlayer.querySelectorAll('.table-player-cards .card-container.flipped');
+      const cards = [];
+      for (const container of cardContainers) {
+        const cardEl = container.querySelector('.card');
+        if (cardEl) {
+          const value = cardEl.querySelector('.value')?.textContent?.trim();
+          // Get the last .suit element (not sub-suit)
+          const suitEls = cardEl.querySelectorAll('.suit:not(.sub-suit)');
+          const suit = suitEls.length > 0 ? suitEls[suitEls.length - 1]?.textContent?.trim() : null;
+          if (value && suit) {
+            cards.push(value + suit);
+          }
+        }
+      }
+      if (cards.length === 2) {
+        return cards;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get current position name
+   * @returns {string} Position name (UTG, MP, CO, BTN, SB, BB)
+   */
+  function getCurrentPosition() {
+    const status = getTableStatus();
+    const myPlayer = status.players.find(p => p.isYou);
+    if (!myPlayer) return '?';
+
+    // Check if we're SB, BB, or BTN
+    if (myPlayer.name === status.sbPlayer) return 'SB';
+    if (myPlayer.name === status.bbPlayer) return 'BB';
+    if (myPlayer.isDealer) return 'BTN';
+
+    // Get active players (not folded at start of hand, not offline)
+    const activePlayers = status.players.filter(p => !p.isOffline);
+    if (activePlayers.length < 3) return '?';
+
+    // Sort players by seat position relative to dealer
+    const dealerPos = parseInt(status.dealerPosition) || 0;
+    const sortedPlayers = [...activePlayers].map(p => ({
+      ...p,
+      distFromDealer: p.seat > dealerPos ? p.seat - dealerPos : p.seat + 100 - dealerPos
+    })).sort((a, b) => a.distFromDealer - b.distFromDealer);
+
+    // Find my index in sorted order (0=BTN, 1=SB, 2=BB, 3=UTG, etc.)
+    const myIndex = sortedPlayers.findIndex(p => p.isYou);
+    const numPlayers = sortedPlayers.length;
+
+    // Position names based on distance from BTN
+    // 0=BTN, 1=SB, 2=BB, 3+=positions before BTN
+    if (myIndex === 0) return 'BTN';
+    if (myIndex === 1) return 'SB';
+    if (myIndex === 2) return 'BB';
+
+    // Remaining positions: UTG, UTG+1, MP, HJ, CO
+    const positionsBeforeBtn = numPlayers - 3; // Exclude BTN, SB, BB
+    const posFromUtg = myIndex - 3; // 0 = UTG, 1 = UTG+1, etc.
+
+    if (positionsBeforeBtn <= 1) {
+      return 'UTG';
+    } else if (positionsBeforeBtn === 2) {
+      return posFromUtg === 0 ? 'UTG' : 'CO';
+    } else if (positionsBeforeBtn === 3) {
+      return ['UTG', 'MP', 'CO'][posFromUtg] || 'MP';
+    } else if (positionsBeforeBtn === 4) {
+      return ['UTG', 'MP', 'HJ', 'CO'][posFromUtg] || 'MP';
+    } else {
+      // 5+ positions before BTN
+      if (posFromUtg === 0) return 'UTG';
+      if (posFromUtg === 1) return 'UTG+1';
+      if (posFromUtg === positionsBeforeBtn - 1) return 'CO';
+      if (posFromUtg === positionsBeforeBtn - 2) return 'HJ';
+      return 'MP';
+    }
+  }
+
+  /**
+   * Get big blind amount from game state
+   * @returns {number} Big blind amount
+   */
+  function getBigBlind() {
+    // Try to parse from hand log
+    for (let i = 0; i < handLog.length; i++) {
+      const entry = handLog[i];
+      if (entry.message && entry.message.includes('posts a big blind of')) {
+        const match = entry.message.match(/big blind of ([\d,]+)/);
+        if (match) {
+          return parseFloat(match[1].replace(/,/g, ''));
+        }
+      }
+    }
+    // Fallback: try to find BB player and their bet
+    const players = document.querySelectorAll('.table-player');
+    for (const playerEl of players) {
+      const statusIcon = playerEl.querySelector('.table-player-status-icon');
+      if (statusIcon && statusIcon.textContent === 'BB') {
+        const betEl = playerEl.querySelector('.table-player-bet-value');
+        if (betEl) {
+          return parseFloat(betEl.textContent.replace(/,/g, '')) || 100;
+        }
+      }
+    }
+    return 100; // Default fallback
+  }
+
+  /**
+   * Get amount needed to call
+   * @returns {number} Amount to call
+   */
+  function getCurrentBetToCall() {
+    const status = getTableStatus();
+    const myPlayer = status.players.find(p => p.isYou);
+    if (!myPlayer) return 0;
+
+    const maxBet = Math.max(...status.players.map(p => parseFloat(p.betAmount) || 0));
+    const myBet = parseFloat(myPlayer.betAmount) || 0;
+    return Math.max(0, maxBet - myBet);
+  }
+
+  /**
+   * Get my current stack in chips
+   * @returns {number} Stack amount in chips
+   */
+  function getMyStack() {
+    const youPlayer = document.querySelector('.you-player');
+    if (!youPlayer) return 0;
+    const normalValue = youPlayer.querySelector('.table-player-stack .normal-value');
+    if (normalValue) {
+      return parseFloat(normalValue.textContent.replace(/,/g, '')) || 0;
+    }
+    return 0;
+  }
+
+  /**
+   * Get my current stack in BB
+   * @returns {number} Stack amount in big blinds
+   */
+  function getMyStackBB() {
+    const youPlayer = document.querySelector('.you-player');
+    if (!youPlayer) return 0;
+    const bbValue = youPlayer.querySelector('.table-player-stack .bb-value');
+    if (bbValue) {
+      // Parse "100BB" or "58.4BB" -> 100 or 58.4
+      return parseFloat(bbValue.textContent.replace(/[,BB]/gi, '')) || 0;
+    }
+    return 0;
+  }
+
+  /**
+   * Get current highest bet on table
+   * @returns {number} Highest bet amount
+   */
+  function getCurrentBet() {
+    const status = getTableStatus();
+    return Math.max(...status.players.map(p => parseFloat(p.betAmount) || 0));
+  }
+
+  /**
+   * Check if we're in preflop
+   * @returns {boolean} True if preflop
+   */
+  function isPreflop() {
+    const tableCards = document.querySelectorAll('.table-cards .card-container');
+    return tableCards.length === 0;
+  }
+
+  /**
+   * Check if facing an all-in
+   * @returns {boolean} True if any opponent is all-in
+   */
+  function isFacingAllIn() {
+    const status = getTableStatus();
+    return status.players.some(p => !p.isYou && p.isAllIn);
+  }
+
+  /**
+   * Execute auto-play action
+   * @param {Object} action - Action to execute
+   */
+  function executeAutoAction(action) {
+    if (!action || autoActionCancelled) {
+      console.log('[AutoPlay] Action cancelled or invalid');
+      return;
+    }
+
+    const status = getTableStatus();
+    if (!isCurrentlyMyTurn()) {
+      console.log('[AutoPlay] Not our turn anymore, aborting action');
+      return;
+    }
+
+    console.log(`[AutoPlay] Executing action: ${action.action}${action.amount ? ' ' + action.amount : ''}`);
+
+    // Find the action buttons container
+    const actionButtons = document.querySelector('.game-decisions-ctn .action-buttons');
+    if (!actionButtons) {
+      console.error('[AutoPlay] Action buttons not found');
+      return;
+    }
+
+    // Execute based on action type
+    switch (action.action) {
+      case 'fold': {
+        const foldBtn = actionButtons.querySelector('button.fold');
+        if (foldBtn && !foldBtn.disabled) {
+          foldBtn.click();
+          console.log('[AutoPlay] ✓ Fold executed');
+        } else {
+          console.error('[AutoPlay] Fold button not found or disabled');
+        }
+        break;
+      }
+
+      case 'call':
+      case 'check': {
+        // Try check first, then call
+        const checkBtn = actionButtons.querySelector('button.check');
+        const callBtn = actionButtons.querySelector('button.call');
+        if (checkBtn && !checkBtn.disabled) {
+          checkBtn.click();
+          console.log('[AutoPlay] ✓ Check executed');
+        } else if (callBtn && !callBtn.disabled) {
+          callBtn.click();
+          console.log('[AutoPlay] ✓ Call executed');
+        } else {
+          console.error('[AutoPlay] Check/Call button not found or disabled');
+        }
+        break;
+      }
+
+      case 'raise': {
+        if (!action.amount) {
+          console.error('[AutoPlay] Raise amount not specified');
+          return;
+        }
+
+        // Click raise button first to open the raise panel
+        const raiseBtn = actionButtons.querySelector('button.raise');
+        if (!raiseBtn || raiseBtn.disabled) {
+          console.error('[AutoPlay] Raise button not found or disabled');
+          return;
+        }
+
+        raiseBtn.click();
+
+        // Wait for raise panel to appear, then set amount and confirm
+        setTimeout(() => {
+          const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
+          if (!raiseInput) {
+            console.error('[AutoPlay] Raise input not found');
+            return;
+          }
+
+          // Set the raise amount
+          raiseInput.value = Math.round(action.amount);
+          raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+          raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+          // Find and click the confirm raise button
+          setTimeout(() => {
+            const confirmBtn = document.querySelector('.game-decisions-ctn button.raise-confirm, .game-decisions-ctn button.bet-confirm, .game-decisions-ctn .action-buttons button.raise');
+            if (confirmBtn && !confirmBtn.disabled) {
+              confirmBtn.click();
+              console.log(`[AutoPlay] ✓ Raise ${action.amount} executed`);
+            } else {
+              console.error('[AutoPlay] Raise confirm button not found');
+            }
+          }, 100);
+        }, 200);
+        break;
+      }
+
+      default:
+        console.error(`[AutoPlay] Unknown action: ${action.action}`);
+    }
+
+    // Dispatch event for UI updates
+    window.dispatchEvent(new CustomEvent('POKERNOW_AUTO_ACTION_EXECUTED', {
+      detail: { action }
+    }));
+  }
+
+  /**
+   * Schedule auto-play action with optional confirmation
+   * @param {Object} action - Action to schedule
+   */
+  function scheduleAutoAction(action) {
+    if (!action || action.action === 'pause') {
+      console.log(`[AutoPlay] Action paused: ${action?.reason || 'unknown'}`);
+      return;
+    }
+
+    // Cancel any existing timer
+    if (autoActionTimer) {
+      clearTimeout(autoActionTimer);
+      autoActionTimer = null;
+    }
+
+    autoActionCancelled = false;
+    currentAutoAction = action;
+
+    const confirmationMode = autoPlaySettings.confirmationMode !== false;
+    const delay = confirmationMode ? (autoPlaySettings.confirmationDelay || 5000) : (autoPlaySettings.actingDelay || 1000);
+
+    console.log(`[AutoPlay] Scheduling ${action.action} in ${delay}ms (confirmation: ${confirmationMode})`);
+
+    // Dispatch event for UI to show countdown
+    if (confirmationMode) {
+      window.dispatchEvent(new CustomEvent('POKERNOW_AUTO_ACTION_PREVIEW', {
+        detail: { action, delay }
+      }));
+    }
+
+    // Schedule execution
+    autoActionTimer = setTimeout(() => {
+      if (!autoActionCancelled && currentAutoAction === action) {
+        executeAutoAction(action);
+      }
+      autoActionTimer = null;
+      currentAutoAction = null;
+    }, delay);
+  }
+
+  /**
+   * Cancel scheduled auto-play action
+   */
+  function cancelAutoAction() {
+    if (autoActionTimer) {
+      clearTimeout(autoActionTimer);
+      autoActionTimer = null;
+    }
+    autoActionCancelled = true;
+    currentAutoAction = null;
+    console.log('[AutoPlay] Action cancelled');
+  }
+
+  /**
+   * Handle auto-play decision on my turn
+   */
+  function handleAutoPlay() {
+    if (!autoPlayEnabled || !autoPlaySettings || !window.AutoPlayEngine) {
+      return;
+    }
+
+    // Only auto-play preflop
+    if (!isPreflop()) {
+      console.log('[AutoPlay] Not preflop, skipping');
+      return;
+    }
+
+    // Get hole cards
+    const cards = getCurrentHoleCards();
+    if (!cards || cards.length !== 2) {
+      console.log('[AutoPlay] Could not extract hole cards');
+      return;
+    }
+
+    // Build game state
+    const bigBlind = getBigBlind();
+    const stack = getMyStack();
+    const stackBB = getMyStackBB();
+    const toCall = getCurrentBetToCall();
+    const currentBet = getCurrentBet();
+    const pot = parseFloat(document.querySelector('.pot-container .pot-amount')?.textContent.replace(/,/g, '') || '0');
+
+    const gameState = {
+      cards: cards,
+      position: getCurrentPosition(),
+      pot: pot,
+      toCall: toCall,
+      stack: stack,
+      stackBB: stackBB,
+      bigBlind: bigBlind,
+      currentBet: currentBet,
+      isMyTurn: isCurrentlyMyTurn(),
+      isAllIn: isFacingAllIn(),
+      players: getTableStatus().players
+    };
+
+    console.log('[AutoPlay] Game state:', gameState);
+
+    // Get auto-action from engine
+    const autoAction = window.AutoPlayEngine.getAutoAction(gameState, autoPlaySettings);
+
+    if (autoAction) {
+      console.log('[AutoPlay] Decision:', autoAction);
+      scheduleAutoAction(autoAction);
+    } else {
+      console.log('[AutoPlay] No action determined');
+    }
+  }
+
+  // Listen for cancel auto-play event
+  window.addEventListener('POKERNOW_CANCEL_AUTO_ACTION', () => {
+    cancelAutoAction();
+  });
+
+  // ============================================
+  // END AUTO-PLAY FUNCTIONS
+  // ============================================
+
   // Detect when it's my turn by watching for UI changes
   function setupTurnDetection() {
     // Inject highlight styles
@@ -1737,6 +2176,11 @@
 
         // Send hand log to AI for analysis
         sendToAI();
+
+        // Handle auto-play if enabled
+        setTimeout(() => {
+          handleAutoPlay();
+        }, 200); // Small delay to ensure game state is fully updated
 
         // FALLBACK: Directly play custom sound after a short delay
         // Only works if audio was unlocked via user interaction

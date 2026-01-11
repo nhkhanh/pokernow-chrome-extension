@@ -30,6 +30,11 @@ PRIVACY_POLICY.md     - Privacy policy
 STORE_LISTING.md      - Chrome Web Store listing info
 ```
 
+## Sample HTML Files
+The `/samples/` folder contains saved HTML from PokerNow pages for testing DOM parsing:
+- `your-turn-with-call-raise-fold.html` - Player's turn with call/raise/fold options
+- Use these to understand PokerNow DOM structure and test selectors
+
 ## Key Architecture
 
 ### extension/inject.js
