@@ -184,7 +184,10 @@
    * @returns {Object|null} Action object or null
    */
   function getAutoAction(gameState, settings) {
-    if (!gameState || !settings || !settings.enabled) {
+    console.log('[AutoPlay] getAutoAction called, settings:', settings);
+
+    if (!gameState || !settings) {
+      console.log('[AutoPlay] Early exit - gameState:', !!gameState, 'settings:', !!settings);
       return null;
     }
 
@@ -223,18 +226,24 @@
 
     // Get range configuration for this position and scenario
     const ranges = settings.ranges || {};
+    console.log('[AutoPlay] Available ranges:', Object.keys(ranges));
+
     const positionRanges = ranges[normalizedPosition];
 
     if (!positionRanges) {
-      console.log(`[AutoPlay] No ranges configured for position ${normalizedPosition}`);
+      console.log(`[AutoPlay] No ranges configured for position ${normalizedPosition}. Available: ${Object.keys(ranges).join(', ') || 'none'}`);
       return null;
     }
 
+    console.log(`[AutoPlay] ${normalizedPosition} scenarios:`, Object.keys(positionRanges));
+
     const scenarioRange = positionRanges[scenario];
     if (!scenarioRange) {
-      console.log(`[AutoPlay] No range configured for scenario ${scenario}`);
+      console.log(`[AutoPlay] No range configured for scenario ${scenario}. Available: ${Object.keys(positionRanges).join(', ') || 'none'}`);
       return null;
     }
+
+    console.log(`[AutoPlay] ${scenario} actions:`, Object.keys(scenarioRange));
 
     // Get action from range
     let action = getActionFromRange(hand, scenarioRange);

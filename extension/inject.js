@@ -1496,7 +1496,7 @@
    * @returns {Array<string>|null} Array of two cards or null
    */
   function getCurrentHoleCards() {
-    // Try to find cards from hand log
+    // Try to find cards from hand log first
     for (let i = handLog.length - 1; i >= 0; i--) {
       const entry = handLog[i];
       if (entry.message && entry.message.startsWith('Your cards:')) {
@@ -1509,6 +1509,29 @@
         }
       }
     }
+
+    // Fallback: extract from HTML (for mid-game joins)
+    const youPlayer = document.querySelector('.you-player');
+    if (youPlayer) {
+      const cardContainers = youPlayer.querySelectorAll('.table-player-cards .card-container.flipped');
+      const cards = [];
+      for (const container of cardContainers) {
+        const cardEl = container.querySelector('.card');
+        if (cardEl) {
+          const value = cardEl.querySelector('.value')?.textContent?.trim();
+          // Get the last .suit element (not sub-suit)
+          const suitEls = cardEl.querySelectorAll('.suit:not(.sub-suit)');
+          const suit = suitEls.length > 0 ? suitEls[suitEls.length - 1]?.textContent?.trim() : null;
+          if (value && suit) {
+            cards.push(value + suit);
+          }
+        }
+      }
+      if (cards.length === 2) {
+        return cards;
+      }
+    }
+
     return null;
   }
 
@@ -1519,7 +1542,54 @@
   function getCurrentPosition() {
     const status = getTableStatus();
     const myPlayer = status.players.find(p => p.isYou);
-    return myPlayer ? myPlayer.position : '?';
+    if (!myPlayer) return '?';
+
+    // Check if we're SB, BB, or BTN
+    if (myPlayer.name === status.sbPlayer) return 'SB';
+    if (myPlayer.name === status.bbPlayer) return 'BB';
+    if (myPlayer.isDealer) return 'BTN';
+
+    // Get active players (not folded at start of hand, not offline)
+    const activePlayers = status.players.filter(p => !p.isOffline);
+    if (activePlayers.length < 3) return '?';
+
+    // Sort players by seat position relative to dealer
+    const dealerPos = parseInt(status.dealerPosition) || 0;
+    const sortedPlayers = [...activePlayers].map(p => ({
+      ...p,
+      distFromDealer: p.seat > dealerPos ? p.seat - dealerPos : p.seat + 100 - dealerPos
+    })).sort((a, b) => a.distFromDealer - b.distFromDealer);
+
+    // Find my index in sorted order (0=BTN, 1=SB, 2=BB, 3=UTG, etc.)
+    const myIndex = sortedPlayers.findIndex(p => p.isYou);
+    const numPlayers = sortedPlayers.length;
+
+    // Position names based on distance from BTN
+    // 0=BTN, 1=SB, 2=BB, 3+=positions before BTN
+    if (myIndex === 0) return 'BTN';
+    if (myIndex === 1) return 'SB';
+    if (myIndex === 2) return 'BB';
+
+    // Remaining positions: UTG, UTG+1, MP, HJ, CO
+    const positionsBeforeBtn = numPlayers - 3; // Exclude BTN, SB, BB
+    const posFromUtg = myIndex - 3; // 0 = UTG, 1 = UTG+1, etc.
+
+    if (positionsBeforeBtn <= 1) {
+      return 'UTG';
+    } else if (positionsBeforeBtn === 2) {
+      return posFromUtg === 0 ? 'UTG' : 'CO';
+    } else if (positionsBeforeBtn === 3) {
+      return ['UTG', 'MP', 'CO'][posFromUtg] || 'MP';
+    } else if (positionsBeforeBtn === 4) {
+      return ['UTG', 'MP', 'HJ', 'CO'][posFromUtg] || 'MP';
+    } else {
+      // 5+ positions before BTN
+      if (posFromUtg === 0) return 'UTG';
+      if (posFromUtg === 1) return 'UTG+1';
+      if (posFromUtg === positionsBeforeBtn - 1) return 'CO';
+      if (posFromUtg === positionsBeforeBtn - 2) return 'HJ';
+      return 'MP';
+    }
   }
 
   /**
@@ -1566,14 +1636,32 @@
   }
 
   /**
-   * Get my current stack
-   * @returns {number} Stack amount
+   * Get my current stack in chips
+   * @returns {number} Stack amount in chips
    */
   function getMyStack() {
-    const status = getTableStatus();
-    const myPlayer = status.players.find(p => p.isYou);
-    if (!myPlayer) return 0;
-    return parseFloat(myPlayer.stack.replace(/,/g, '')) || 0;
+    const youPlayer = document.querySelector('.you-player');
+    if (!youPlayer) return 0;
+    const normalValue = youPlayer.querySelector('.table-player-stack .normal-value');
+    if (normalValue) {
+      return parseFloat(normalValue.textContent.replace(/,/g, '')) || 0;
+    }
+    return 0;
+  }
+
+  /**
+   * Get my current stack in BB
+   * @returns {number} Stack amount in big blinds
+   */
+  function getMyStackBB() {
+    const youPlayer = document.querySelector('.you-player');
+    if (!youPlayer) return 0;
+    const bbValue = youPlayer.querySelector('.table-player-stack .bb-value');
+    if (bbValue) {
+      // Parse "100BB" or "58.4BB" -> 100 or 58.4
+      return parseFloat(bbValue.textContent.replace(/[,BB]/gi, '')) || 0;
+    }
+    return 0;
   }
 
   /**
@@ -1614,29 +1702,29 @@
     }
 
     const status = getTableStatus();
-    if (!checkIfMyTurn()) {
+    if (!isCurrentlyMyTurn()) {
       console.log('[AutoPlay] Not our turn anymore, aborting action');
       return;
     }
 
     console.log(`[AutoPlay] Executing action: ${action.action}${action.amount ? ' ' + action.amount : ''}`);
 
-    // Find the decision panel
-    const decisionPanel = document.querySelector('.decision-panel');
-    if (!decisionPanel) {
-      console.error('[AutoPlay] Decision panel not found');
+    // Find the action buttons container
+    const actionButtons = document.querySelector('.game-decisions-ctn .action-buttons');
+    if (!actionButtons) {
+      console.error('[AutoPlay] Action buttons not found');
       return;
     }
 
     // Execute based on action type
     switch (action.action) {
       case 'fold': {
-        const foldBtn = decisionPanel.querySelector('button[class*="fold"]');
-        if (foldBtn) {
+        const foldBtn = actionButtons.querySelector('button.fold');
+        if (foldBtn && !foldBtn.disabled) {
           foldBtn.click();
           console.log('[AutoPlay] ✓ Fold executed');
         } else {
-          console.error('[AutoPlay] Fold button not found');
+          console.error('[AutoPlay] Fold button not found or disabled');
         }
         break;
       }
@@ -1644,16 +1732,16 @@
       case 'call':
       case 'check': {
         // Try check first, then call
-        const checkBtn = decisionPanel.querySelector('button[class*="check"]');
-        const callBtn = decisionPanel.querySelector('button[class*="call"]');
-        if (checkBtn) {
+        const checkBtn = actionButtons.querySelector('button.check');
+        const callBtn = actionButtons.querySelector('button.call');
+        if (checkBtn && !checkBtn.disabled) {
           checkBtn.click();
           console.log('[AutoPlay] ✓ Check executed');
-        } else if (callBtn) {
+        } else if (callBtn && !callBtn.disabled) {
           callBtn.click();
           console.log('[AutoPlay] ✓ Call executed');
         } else {
-          console.error('[AutoPlay] Check/Call button not found');
+          console.error('[AutoPlay] Check/Call button not found or disabled');
         }
         break;
       }
@@ -1664,28 +1752,39 @@
           return;
         }
 
-        // Find raise input
-        const raiseInput = decisionPanel.querySelector('input[type="number"], input.bet-input');
-        if (!raiseInput) {
-          console.error('[AutoPlay] Raise input not found');
+        // Click raise button first to open the raise panel
+        const raiseBtn = actionButtons.querySelector('button.raise');
+        if (!raiseBtn || raiseBtn.disabled) {
+          console.error('[AutoPlay] Raise button not found or disabled');
           return;
         }
 
-        // Set the raise amount
-        raiseInput.value = Math.round(action.amount);
-        raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
-        raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+        raiseBtn.click();
 
-        // Wait a bit for UI to update, then click raise button
+        // Wait for raise panel to appear, then set amount and confirm
         setTimeout(() => {
-          const raiseBtn = decisionPanel.querySelector('button[class*="raise"], button[class*="bet"]');
-          if (raiseBtn) {
-            raiseBtn.click();
-            console.log(`[AutoPlay] ✓ Raise ${action.amount} executed`);
-          } else {
-            console.error('[AutoPlay] Raise button not found');
+          const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
+          if (!raiseInput) {
+            console.error('[AutoPlay] Raise input not found');
+            return;
           }
-        }, 100);
+
+          // Set the raise amount
+          raiseInput.value = Math.round(action.amount);
+          raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+          raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+          // Find and click the confirm raise button
+          setTimeout(() => {
+            const confirmBtn = document.querySelector('.game-decisions-ctn button.raise-confirm, .game-decisions-ctn button.bet-confirm, .game-decisions-ctn .action-buttons button.raise');
+            if (confirmBtn && !confirmBtn.disabled) {
+              confirmBtn.click();
+              console.log(`[AutoPlay] ✓ Raise ${action.amount} executed`);
+            } else {
+              console.error('[AutoPlay] Raise confirm button not found');
+            }
+          }, 100);
+        }, 200);
         break;
       }
 
@@ -1777,6 +1876,7 @@
     // Build game state
     const bigBlind = getBigBlind();
     const stack = getMyStack();
+    const stackBB = getMyStackBB();
     const toCall = getCurrentBetToCall();
     const currentBet = getCurrentBet();
     const pot = parseFloat(document.querySelector('.pot-container .pot-amount')?.textContent.replace(/,/g, '') || '0');
@@ -1787,10 +1887,10 @@
       pot: pot,
       toCall: toCall,
       stack: stack,
-      stackBB: stack / bigBlind,
+      stackBB: stackBB,
       bigBlind: bigBlind,
       currentBet: currentBet,
-      isMyTurn: checkIfMyTurn(),
+      isMyTurn: isCurrentlyMyTurn(),
       isAllIn: isFacingAllIn(),
       players: getTableStatus().players
     };
