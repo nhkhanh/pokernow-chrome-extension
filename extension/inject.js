@@ -1916,10 +1916,18 @@
 
     if (autoAction && autoAction.action !== 'pause') {
       console.log('[AutoPlay] Decision:', autoAction);
-      scheduleAutoAction(autoAction);
-      // Suppress turn sound when autoplay is handling the action
-      isMyTurnPending = false;
-      return true;
+
+      // Only auto-execute FOLD actions
+      if (autoAction.action === 'fold') {
+        scheduleAutoAction(autoAction);
+        // Suppress turn sound when autoplay is handling the action
+        isMyTurnPending = false;
+        return true;
+      } else {
+        // Log non-fold actions but don't auto-execute
+        console.log(`[AutoPlay] ${autoAction.action.toUpperCase()} detected but not auto-executing (only fold is auto-played)`);
+        return false;
+      }
     } else {
       console.log('[AutoPlay] No action determined - turn sound and AI will trigger');
       return false;
