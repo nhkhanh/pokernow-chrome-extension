@@ -10,39 +10,44 @@
    * @returns {string} Scenario type: "unopened", "facing-limp", "facing-raise", "facing-3bet"
    */
   function detectScenario(gameState) {
-    const { players, myPosition } = gameState;
+    const { players, toCall, currentBet } = gameState;
 
-    // Get actions from players who acted before us
-    const previousActions = [];
-    let foundMe = false;
+    // Collect all opponent actions (excluding our own)
+    const opponentActions = [];
 
     for (const player of players) {
-      if (player.isYou) {
-        foundMe = true;
-        break;
-      }
+      if (player.isYou) continue;
+      if (player.isFold || player.isOffline) continue;
 
-      if (!player.isFold && !player.isOffline && player.action) {
-        // Skip blinds unless they raised
+      if (player.action) {
+        // Skip pure blind postings (SB/BB with no further action)
         if (player.action === 'SB' || player.action === 'BB') {
           continue;
         }
-        previousActions.push(player.action.toLowerCase());
+        opponentActions.push(player.action.toLowerCase());
       }
     }
 
+    console.log('[AutoPlay] Opponent actions:', opponentActions);
+
     // Count raises/bets
-    const raiseCount = previousActions.filter(a =>
+    const raiseCount = opponentActions.filter(a =>
       a.includes('raise') || a.includes('bet') || a.includes('all-in')
     ).length;
 
-    const limpCount = previousActions.filter(a =>
+    const limpCount = opponentActions.filter(a =>
       a.includes('call') || a.includes('limp')
     ).length;
 
+    console.log('[AutoPlay] Raise count:', raiseCount, 'Limp count:', limpCount, 'currentBet:', currentBet);
+
+    // Also check if facing a raise based on bet amounts (backup check)
+    // If currentBet > 1BB and we have to call, there's been a raise
+    const facingRaiseBySizing = currentBet > 1;
+
     // Determine scenario
     if (raiseCount >= 2) return 'facing-3bet';
-    if (raiseCount === 1) return 'facing-raise';
+    if (raiseCount === 1 || facingRaiseBySizing) return 'facing-raise';
     if (limpCount > 0) return 'facing-limp';
     return 'unopened';
   }

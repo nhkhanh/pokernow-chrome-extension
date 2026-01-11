@@ -664,7 +664,7 @@
   let audioUnlocked = false; // Track if audio has been unlocked via user interaction
   const DEBOUNCE_MS = 300;
   const TURN_SOUND_WINDOW_MS = 2000; // Window to catch sound after turn detected (increased)
-  const SOUND_CHECK_DELAY_MS = 150; // Delay before fallback sound plays
+  const SOUND_CHECK_DELAY_MS = 300; // Delay before fallback sound plays (after autoplay check at 200ms)
 
   // Auto-play settings
   let autoPlayEnabled = false;
@@ -1867,23 +1867,24 @@
 
   /**
    * Handle auto-play decision on my turn
+   * @returns {boolean} True if autoplay handled the action, false otherwise
    */
   function handleAutoPlay() {
     if (!autoPlayEnabled || !autoPlaySettings || !window.AutoPlayEngine) {
-      return;
+      return false;
     }
 
     // Only auto-play preflop
     if (!isPreflop()) {
       console.log('[AutoPlay] Not preflop, skipping');
-      return;
+      return false;
     }
 
     // Get hole cards
     const cards = getCurrentHoleCards();
     if (!cards || cards.length !== 2) {
       console.log('[AutoPlay] Could not extract hole cards');
-      return;
+      return false;
     }
 
     // Build game state
@@ -1918,8 +1919,10 @@
       scheduleAutoAction(autoAction);
       // Suppress turn sound when autoplay is handling the action
       isMyTurnPending = false;
+      return true;
     } else {
-      console.log('[AutoPlay] No action determined - turn sound will play');
+      console.log('[AutoPlay] No action determined - turn sound and AI will trigger');
+      return false;
     }
   }
 
@@ -2184,12 +2187,13 @@
         // DOM-based turn logging disabled - socket provides this via pITT
         isMyTurnPending = true;
 
-        // Send hand log to AI for analysis
-        sendToAI();
-
-        // Handle auto-play if enabled
+        // Handle auto-play if enabled, then send to AI if autoplay didn't handle it
         setTimeout(() => {
-          handleAutoPlay();
+          const autoplayHandled = handleAutoPlay();
+          // Only send to AI if autoplay didn't handle the action
+          if (!autoplayHandled) {
+            sendToAI();
+          }
         }, 200); // Small delay to ensure game state is fully updated
 
         // FALLBACK: Directly play custom sound after a short delay

@@ -15,8 +15,17 @@
    */
   function parseCard(cardStr) {
     if (!cardStr || cardStr.length < 2) return null;
-    const rank = cardStr[0].toUpperCase();
-    const suit = cardStr[1].toLowerCase();
+
+    // Handle "10" as a rank (convert to "T")
+    let rank, suit;
+    if (cardStr.startsWith('10')) {
+      rank = 'T';
+      suit = cardStr[2]?.toLowerCase();
+    } else {
+      rank = cardStr[0].toUpperCase();
+      suit = cardStr[1].toLowerCase();
+    }
+
     return { rank, suit };
   }
 
