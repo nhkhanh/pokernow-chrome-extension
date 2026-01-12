@@ -2230,8 +2230,13 @@
       checkForWinners();
       
       // Only trigger when turn STARTS (transitions from not-my-turn to my-turn)
-      if (isMyTurn && !wasMyTurn) {
-        // DOM-based turn logging disabled - socket provides this via pITT
+      // Also trigger on new street if it's my turn (handles case where turn ends and starts in same batch)
+      const turnJustStarted = isMyTurn && !wasMyTurn;
+      const newStreetMyTurn = isNewStreet && isMyTurn && wasMyTurn; // Turn "continued" across street boundary
+      if (turnJustStarted || newStreetMyTurn) {
+        if (newStreetMyTurn) {
+          console.log('[SoundReplacer] Turn detected on new street (turn continued across street boundary)');
+        }
 
         // Check if autoplay might handle this action (suppress sound if so)
         const autoplayMightHandle = autoPlayEnabled && autoPlaySettings && window.AutoPlayEngine && isPreflop();
