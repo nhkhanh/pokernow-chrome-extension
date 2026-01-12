@@ -272,15 +272,15 @@
     let action = getActionFromRange(hand, scenarioRange);
 
     if (!action || action === 'fold') {
-      // Special case: BB facing limps can check for free instead of folding
-      if (normalizedPosition === 'BB' && scenario === 'facing-limp' && toCall === 0) {
-        console.log('[AutoPlay] BB facing limps - checking instead of folding');
+      // Never fold when we can check for free
+      if (toCall === 0) {
+        console.log('[AutoPlay] Can check for free - checking instead of folding');
         return {
           action: 'check',
           hand: hand,
           position: normalizedPosition,
           scenario: scenario,
-          reasoning: `${hand} in BB facing limps: check (free)`
+          reasoning: `${hand} in ${normalizedPosition}: check (free)`
         };
       }
       return {
