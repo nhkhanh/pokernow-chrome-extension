@@ -2232,26 +2232,45 @@
       // Only trigger when turn STARTS (transitions from not-my-turn to my-turn)
       if (isMyTurn && !wasMyTurn) {
         // DOM-based turn logging disabled - socket provides this via pITT
-        isMyTurnPending = true;
+
+        // Check if autoplay might handle this action (suppress sound if so)
+        const autoplayMightHandle = autoPlayEnabled && autoPlaySettings && window.AutoPlayEngine && isPreflop();
+
+        // Only set pending (to allow sound) if autoplay won't handle
+        if (!autoplayMightHandle) {
+          isMyTurnPending = true;
+        }
 
         // Handle auto-play if enabled, then send to AI if autoplay didn't handle it
         setTimeout(() => {
           const autoplayHandled = handleAutoPlay();
           // Only send to AI if autoplay didn't handle the action
           if (!autoplayHandled) {
+            // If autoplay didn't handle, enable sound now (if not already enabled)
+            if (autoplayMightHandle) {
+              isMyTurnPending = true;
+              // Trigger fallback sound since we suppressed it initially
+              if (customSoundEnabled && (customSoundDataUrl || defaultSoundUrl) && audioUnlocked) {
+                console.log('[SoundReplacer] ⏰ Fallback: Playing custom sound (autoplay declined)');
+                playCustomSound();
+                isMyTurnPending = false;
+              }
+            }
             sendToAI();
           }
         }, 200); // Small delay to ensure game state is fully updated
 
-        // FALLBACK: Directly play custom sound after a short delay
+        // FALLBACK: Directly play custom sound after a short delay (only if autoplay not checking)
         // Only works if audio was unlocked via user interaction
-        setTimeout(() => {
-          if (isMyTurnPending && customSoundEnabled && (customSoundDataUrl || defaultSoundUrl) && audioUnlocked) {
-            console.log('[SoundReplacer] ⏰ Fallback: Playing custom sound directly');
-            playCustomSound();
-            isMyTurnPending = false;
-          }
-        }, SOUND_CHECK_DELAY_MS);
+        if (!autoplayMightHandle) {
+          setTimeout(() => {
+            if (isMyTurnPending && customSoundEnabled && (customSoundDataUrl || defaultSoundUrl) && audioUnlocked) {
+              console.log('[SoundReplacer] ⏰ Fallback: Playing custom sound directly');
+              playCustomSound();
+              isMyTurnPending = false;
+            }
+          }, SOUND_CHECK_DELAY_MS);
+        }
 
         // Reset flag after window expires
         setTimeout(() => {
