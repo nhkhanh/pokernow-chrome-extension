@@ -250,6 +250,8 @@ Table columns:
 - EV (expected value: +BB or -BB)
 - Freq (percentage in mixed strategy, must sum to 100%)
 
+Sort the table by Freq descending (highest frequency first).
+
 Example:
 | Action | EV | Freq |
 |--------|-----|------|
