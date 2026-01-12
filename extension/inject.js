@@ -44,6 +44,7 @@
   let socketTurnStartTime = 0; // Timestamp when current player's turn started
   let socketCurrentTurnPlayer = null; // Player ID whose turn it is
   let socketCurrentTurnActionLogged = false; // Track if current turn player's action was logged
+  let socketMyPosition = null; // My position from socket (UTG, MP, CO, BTN, SB, BB)
 
   // Format bet value based on displayMode setting
   function formatBet(chips) {
@@ -292,6 +293,7 @@
         // Calculate and log my position
         if (socketMyId) {
           const myPosition = getPositionName(socketMyId, gs.dealerID, gs.sBPI, gs.bBPI, inHandPlayerIds);
+          socketMyPosition = myPosition; // Store for autoplay
           const myName = socketPlayers[socketMyId]?.name || '?';
           console.log(`[Socket] You: ${myName} (${myPosition})`);
           dispatchSocketLog('info', `You: ${myName} (${myPosition})`);
@@ -414,6 +416,7 @@
 
       // Calculate my position and name
       const myPosition = socketMyId ? getPositionName(socketMyId, data.dealerID, data.sBPI, data.bBPI, data.iHPI || []) : '?';
+      socketMyPosition = myPosition; // Store for autoplay
       const myName = socketMyId ? (socketPlayers[socketMyId]?.name || '?') : '?';
       console.log(`[Socket] You: ${myName} (${myPosition})`);
 
@@ -1556,6 +1559,12 @@
    * @returns {string} Position name (UTG, MP, CO, BTN, SB, BB)
    */
   function getCurrentPosition() {
+    // Use socket-provided position if available (most accurate)
+    if (socketMyPosition && socketMyPosition !== '?') {
+      return socketMyPosition;
+    }
+
+    // Fallback to DOM-based calculation
     const status = getTableStatus();
     const myPlayer = status.players.find(p => p.isYou);
     if (!myPlayer) return '?';
@@ -1747,6 +1756,7 @@
         if (foldBtn && !foldBtn.disabled) {
           foldBtn.click();
           console.log('[AutoPlay] ✓ Fold executed');
+          dispatchSocketLog('autoplay', `✅ Auto-FOLD executed`);
         } else {
           console.error('[AutoPlay] Fold button not found or disabled');
         }
@@ -1761,9 +1771,11 @@
         if (checkBtn && !checkBtn.disabled) {
           checkBtn.click();
           console.log('[AutoPlay] ✓ Check executed');
+          dispatchSocketLog('autoplay', `✅ Auto-CHECK executed`);
         } else if (callBtn && !callBtn.disabled) {
           callBtn.click();
           console.log('[AutoPlay] ✓ Call executed');
+          dispatchSocketLog('autoplay', `✅ Auto-CALL executed`);
         } else {
           console.error('[AutoPlay] Check/Call button not found or disabled');
         }
@@ -1906,6 +1918,10 @@
     const currentBet = getCurrentBet();
     const pot = parseFloat(document.querySelector('.pot-container .pot-amount')?.textContent.replace(/,/g, '') || '0');
 
+    const tableStatus = getTableStatus();
+    const activePlayers = tableStatus.players.filter(p => !p.isFold && !p.isOffline).length;
+    const spr = pot > 0 ? stack / pot : 999; // Stack-to-Pot Ratio
+
     const gameState = {
       cards: cards,
       position: getCurrentPosition(),
@@ -1917,7 +1933,9 @@
       currentBet: currentBet,
       isMyTurn: isCurrentlyMyTurn(),
       isAllIn: isFacingAllIn(),
-      players: getTableStatus().players
+      players: tableStatus.players,
+      activePlayers: activePlayers,
+      spr: spr
     };
 
     console.log('[AutoPlay] Game state:', gameState);
@@ -1928,6 +1946,10 @@
     if (autoAction && autoAction.action !== 'pause') {
       console.log('[AutoPlay] Decision:', autoAction);
 
+      // Log to Game Log
+      const tableType = window.AutoPlayEngine.getTableType(activePlayers);
+      dispatchSocketLog('autoplay', `🤖 ${autoAction.hand} in ${autoAction.position} (${tableType}) → ${autoAction.action.toUpperCase()}`);
+
       // Only auto-execute FOLD and CHECK actions (low-risk actions)
       if (autoAction.action === 'fold' || autoAction.action === 'check') {
         scheduleAutoAction(autoAction);
@@ -1937,8 +1959,14 @@
       } else {
         // Log non-fold/check actions but don't auto-execute
         console.log(`[AutoPlay] ${autoAction.action.toUpperCase()} detected but not auto-executing (only fold/check is auto-played)`);
+        dispatchSocketLog('autoplay', `⏸️ ${autoAction.action.toUpperCase()} requires manual action`);
         return false;
       }
+    } else if (autoAction && autoAction.action === 'pause') {
+      // Log pause reason to Game Log
+      console.log(`[AutoPlay] Paused: ${autoAction.reason}`);
+      dispatchSocketLog('autoplay', `⏸️ Paused: ${autoAction.reason}`);
+      return false;
     } else {
       console.log('[AutoPlay] No action determined - turn sound and AI will trigger');
       return false;

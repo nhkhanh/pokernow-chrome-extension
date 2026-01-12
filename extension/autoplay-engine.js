@@ -4,6 +4,25 @@
 (function() {
   'use strict';
 
+  // ============================================
+  // CONFIGURABLE RANGES
+  // ============================================
+
+  /**
+   * Range for widening in short-handed (2-3 players) situations.
+   * When a hand would normally fold but matches this range, it calls instead.
+   * This is a very wide range suitable for heads-up and 3-handed play.
+   */
+  const SHORTHANDED_CALL_RANGE = '22+,A2s+,K2s+,Q2s+,J5s+,T6s+,96s+,86s+,75s+,65s,54s,A2o+,K5o+,Q7o+,J8o+,T8o+,98o';
+
+  /**
+   * Range for heads-up only (even wider than shorthanded)
+   * Currently same as shorthanded, can be customized for more aggressive HU play
+   */
+  const HEADSUP_CALL_RANGE = '22+,A2s+,K2s+,Q2s+,J4s+,T5s+,95s+,85s+,74s+,64s+,54s,A2o+,K4o+,Q6o+,J7o+,T8o+,97o+';
+
+  // ============================================
+
   /**
    * Detect the current scenario based on opponent actions
    * @param {Object} gameState - Current game state
@@ -181,16 +200,52 @@
   }
 
   /**
+   * Get table type based on number of active players
+   * @param {number} activePlayers - Number of active players
+   * @returns {string} Table type: "headsup", "shorthanded", "fullring", "multiway"
+   */
+  function getTableType(activePlayers) {
+    if (activePlayers <= 2) return 'headsup';
+    if (activePlayers === 3) return 'shorthanded';
+    if (activePlayers <= 6) return 'fullring';
+    return 'multiway'; // 7+ players
+  }
+
+  /**
+   * Check if we should tighten ranges based on multiway pot
+   * @param {number} activePlayers - Number of active players
+   * @returns {boolean} True if we should play tighter
+   */
+  function shouldTightenForMultiway(activePlayers) {
+    // Tighten ranges when 4+ players are active (multiway pot)
+    return activePlayers >= 4;
+  }
+
+  /**
+   * Check if we should widen ranges for short-handed play
+   * @param {number} activePlayers - Number of active players
+   * @returns {boolean} True if we should play wider
+   */
+  function shouldWidenForShorthanded(activePlayers) {
+    return activePlayers <= 3;
+  }
+
+  /**
    * Check if action should be paused for safety
    * @param {Object} gameState - Current game state
    * @returns {Object} { shouldPause: boolean, reason: string }
    */
   function checkSafetyPause(gameState) {
-    const { stackBB, toCall, stack, isAllIn } = gameState;
+    const { stackBB, toCall, stack, isAllIn, spr } = gameState;
 
     // Don't auto-play if facing an all-in
     if (isAllIn) {
       return { shouldPause: true, reason: 'Facing all-in' };
+    }
+
+    // Check SPR caution (low SPR = pot committed)
+    if (spr !== undefined && spr < 3) {
+      return { shouldPause: true, reason: `Low SPR (${spr.toFixed(1)}) - pot committed` };
     }
 
     // Don't auto-play with very short stack
@@ -230,7 +285,7 @@
       };
     }
 
-    const { cards, position, stackBB, pot, toCall, bigBlind, currentBet } = gameState;
+    const { cards, position, stackBB, pot, toCall, bigBlind, currentBet, activePlayers, spr } = gameState;
 
     // Validate we have cards
     if (!cards || cards.length !== 2) {
@@ -251,7 +306,10 @@
     // Detect scenario
     const scenario = detectScenario(gameState);
 
-    console.log(`[AutoPlay] Hand: ${hand}, Position: ${normalizedPosition}, Scenario: ${scenario}, Stack: ${stackBB.toFixed(1)}BB`);
+    // Determine table type for gradient adjustments
+    const tableType = getTableType(activePlayers);
+
+    console.log(`[AutoPlay] Hand: ${hand}, Position: ${normalizedPosition}, Scenario: ${scenario}, Stack: ${stackBB.toFixed(1)}BB, Table: ${tableType} (${activePlayers || '?'}p), SPR: ${spr ? spr.toFixed(1) : '?'}`);
 
     // Get range configuration for this position and scenario
     const ranges = settings.ranges || {};
@@ -270,6 +328,43 @@
 
     // Get action from range
     let action = getActionFromRange(hand, scenarioRange);
+
+    // Gradient adjustment based on table type:
+    // - headsup/shorthanded (2-3p): Widen - auto-play more actions including calls
+    // - fullring (4-6p): Standard - use configured ranges
+    // - multiway (7+p): Tighten - pause for marginal calls
+    if (tableType === 'multiway') {
+      // Multiway pot: pause for marginal calls to let human decide
+      if (action === 'call') {
+        console.log(`[AutoPlay] Multiway pot (${activePlayers} players) - pausing for marginal call`);
+        return {
+          action: 'pause',
+          reason: `Multiway pot (${activePlayers} players) - manual decision needed`,
+          hand: hand,
+          position: normalizedPosition,
+          scenario: scenario,
+          tableType: tableType
+        };
+      }
+    } else if (tableType === 'headsup') {
+      // Heads-up: widest range, very aggressive
+      if (action === 'fold' && toCall > 0) {
+        const isPlayableHeadsup = window.HandEvaluator?.matchesRange(hand, HEADSUP_CALL_RANGE);
+        if (isPlayableHeadsup) {
+          console.log(`[AutoPlay] Heads-up - widening range, calling with ${hand}`);
+          action = 'call';
+        }
+      }
+    } else if (tableType === 'shorthanded') {
+      // 3-handed: wide but slightly tighter than heads-up
+      if (action === 'fold' && toCall > 0) {
+        const isPlayableShorthanded = window.HandEvaluator?.matchesRange(hand, SHORTHANDED_CALL_RANGE);
+        if (isPlayableShorthanded) {
+          console.log(`[AutoPlay] Shorthanded (3p) - widening range, calling with ${hand}`);
+          action = 'call';
+        }
+      }
+    }
 
     if (!action || action === 'fold') {
       // Never fold when we can check for free
@@ -354,6 +449,9 @@
     calculateRaiseSize,
     getActionFromRange,
     getStackAdjustment,
+    getTableType,
+    shouldTightenForMultiway,
+    shouldWidenForShorthanded,
     checkSafetyPause,
     getAutoAction,
     validateAction

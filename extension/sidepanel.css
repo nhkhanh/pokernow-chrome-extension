@@ -208,6 +208,16 @@ body {
   font-weight: 600;
 }
 
+.log-entry.autoplay {
+  border-left-color: #8b5cf6;
+  background: #f5f3ff;
+}
+
+.log-entry.autoplay .label {
+  color: #7c3aed;
+  font-style: italic;
+}
+
 .cards {
   font-family: 'Segoe UI Symbol', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
 }

@@ -16,6 +16,9 @@ Chrome extension for PokerNow.club that provides:
   manifest.json       - Extension configuration
   content.js          - Content script that bridges extension storage to page context
   inject.js           - Main script injected into PokerNow pages (contains all game logic)
+  autoplay-engine.js  - Preflop auto-play decision engine
+  autoplay-settings.js - Auto-play settings and presets
+  hand-evaluator.js   - Hand notation parsing and range matching
   popup.html/popup.js - Extension popup UI for settings
   background.js       - Service worker for extension
   sidepanel.*         - Side panel UI
@@ -23,6 +26,8 @@ Chrome extension for PokerNow.club that provides:
   analytics.js        - Google Analytics integration
   *.mp3               - Default notification sounds
   icon*.png           - Extension icons
+/docs/                - Documentation
+  autoplay-strategy.md - How autoplay decisions work
 /assets/              - Chrome Web Store listing assets
 README.md             - Project documentation
 LICENSE               - MIT license
