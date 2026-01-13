@@ -41,9 +41,9 @@ The engine detects what action you're facing:
 | Scenario | Description |
 |----------|-------------|
 | `unopened` | No one has raised, pot is unopened |
-| `facing-limp` | One or more players limped (called BB) |
+| `facing-limp` | One or more players limped (called BB). When isolation raising, the extension automatically clicks the "Pot" button for optimal sizing. |
 | `facing-raise` | Someone raised, you're deciding to call/3-bet/fold |
-| `facing-3bet` | There was a raise and re-raise |
+| `facing-3bet` | There was a re-raise and re-re-raise |
 
 ### 4. Stack Size (BB)
 
@@ -155,9 +155,15 @@ Available strategy presets:
 
 ## Execution
 
-Only **fold** and **check** actions are auto-executed. Raises and calls are logged but require manual execution (click the button yourself).
+The following actions are auto-executed:
+- **Fold** - Automatically executed
+- **Check** - Automatically executed
+- **Call** - Automatically executed
+- **Raise** - Automatically executed, including:
+  - **Isolation raises vs limps**: Clicks the "Pot" button for optimal sizing
+  - **Other raises**: Uses calculated raise amount based on settings
 
-This ensures you maintain control over actions that commit chips to the pot.
+This allows for full automation of preflop decisions when autoplay is enabled.
 
 ## Keyboard Shortcuts
 

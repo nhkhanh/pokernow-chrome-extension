@@ -1797,29 +1797,87 @@
 
         raiseBtn.click();
 
-        // Wait for raise panel to appear, then set amount and confirm
+        // Wait for raise panel to appear, then handle based on scenario
         setTimeout(() => {
-          const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
-          if (!raiseInput) {
-            console.error('[AutoPlay] Raise input not found');
-            return;
-          }
+          // Check if this is an isolation raise facing limps
+          const isFacingLimp = action.scenario === 'facing-limp';
 
-          // Set the raise amount
-          raiseInput.value = Math.round(action.amount);
-          raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
-          raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+          if (isFacingLimp) {
+            // For facing limps, click the pot button for isolation raise
+            console.log('[AutoPlay] Facing limp - looking for pot button');
 
-          // Find and click the confirm raise button
-          setTimeout(() => {
-            const confirmBtn = document.querySelector('.game-decisions-ctn button.raise-confirm, .game-decisions-ctn button.bet-confirm, .game-decisions-ctn .action-buttons button.raise');
-            if (confirmBtn && !confirmBtn.disabled) {
-              confirmBtn.click();
-              console.log(`[AutoPlay] ✓ Raise ${action.amount} executed`);
+            // Try multiple selectors for pot button
+            const potBtn = document.querySelector(
+              '.game-decisions-ctn button.pot, ' +
+              '.game-decisions-ctn .raise-values button:has-text("Pot"), ' +
+              '.game-decisions-ctn .raise-value-pot, ' +
+              '.game-decisions-ctn button[data-value="pot"], ' +
+              '.game-decisions-ctn .quick-bets button.pot'
+            ) || Array.from(document.querySelectorAll('.game-decisions-ctn button')).find(btn =>
+              btn.textContent.trim().toLowerCase() === 'pot' ||
+              btn.textContent.trim().toLowerCase() === '1x pot' ||
+              btn.classList.contains('pot')
+            );
+
+            if (potBtn && !potBtn.disabled) {
+              potBtn.click();
+              console.log('[AutoPlay] ✓ Pot button clicked for isolation raise');
+              dispatchSocketLog('autoplay', `✅ Auto-RAISE (Pot) executed vs limp`);
+
+              // Wait a bit then confirm
+              setTimeout(() => {
+                const confirmBtn = document.querySelector('.game-decisions-ctn button.raise-confirm, .game-decisions-ctn button.bet-confirm, .game-decisions-ctn .action-buttons button.raise');
+                if (confirmBtn && !confirmBtn.disabled) {
+                  confirmBtn.click();
+                  console.log('[AutoPlay] ✓ Raise confirmed');
+                } else {
+                  console.error('[AutoPlay] Raise confirm button not found');
+                }
+              }, 100);
             } else {
-              console.error('[AutoPlay] Raise confirm button not found');
+              console.log('[AutoPlay] Pot button not found, falling back to manual amount');
+              // Fallback to manual entry
+              const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
+              if (raiseInput) {
+                raiseInput.value = Math.round(action.amount);
+                raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+                raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+                setTimeout(() => {
+                  const confirmBtn = document.querySelector('.game-decisions-ctn button.raise-confirm, .game-decisions-ctn button.bet-confirm, .game-decisions-ctn .action-buttons button.raise');
+                  if (confirmBtn && !confirmBtn.disabled) {
+                    confirmBtn.click();
+                    console.log(`[AutoPlay] ✓ Raise ${action.amount} executed (fallback)`);
+                    dispatchSocketLog('autoplay', `✅ Auto-RAISE ${action.amount} executed`);
+                  }
+                }, 100);
+              }
             }
-          }, 100);
+          } else {
+            // For other scenarios, use manual amount entry
+            const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
+            if (!raiseInput) {
+              console.error('[AutoPlay] Raise input not found');
+              return;
+            }
+
+            // Set the raise amount
+            raiseInput.value = Math.round(action.amount);
+            raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+            raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Find and click the confirm raise button
+            setTimeout(() => {
+              const confirmBtn = document.querySelector('.game-decisions-ctn button.raise-confirm, .game-decisions-ctn button.bet-confirm, .game-decisions-ctn .action-buttons button.raise');
+              if (confirmBtn && !confirmBtn.disabled) {
+                confirmBtn.click();
+                console.log(`[AutoPlay] ✓ Raise ${action.amount} executed`);
+                dispatchSocketLog('autoplay', `✅ Auto-RAISE ${action.amount} executed`);
+              } else {
+                console.error('[AutoPlay] Raise confirm button not found');
+              }
+            }, 100);
+          }
         }, 200);
         break;
       }
