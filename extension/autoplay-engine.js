@@ -26,10 +26,10 @@
   /**
    * Detect the current scenario based on opponent actions
    * @param {Object} gameState - Current game state
-   * @returns {string} Scenario type: "unopened", "facing-limp", "facing-raise", "facing-3bet"
+   * @returns {string} Scenario type: "sb-complete", "unopened", "facing-limp", "facing-raise", "facing-3bet"
    */
   function detectScenario(gameState) {
-    const { players, toCall, currentBet } = gameState;
+    const { players, toCall, currentBet, bigBlind, position } = gameState;
 
     // Collect all opponent actions (excluding our own)
     const opponentActions = [];
@@ -64,6 +64,18 @@
     function extractBetSize(action) {
       const match = action.match(/(\d+\.?\d*)\s*bb/i);
       return match ? parseFloat(match[1]) : 0;
+    }
+
+    // Special case: SB complete (when in SB position and only need to complete to BB)
+    // This happens when toCall is approximately 0.5BB (or half of BB amount)
+    const normalizedPosition = normalizePosition(position);
+    if (normalizedPosition === 'SB' && bigBlind) {
+      const toCallBB = toCall / bigBlind;
+      // If toCall is between 0.3BB and 0.7BB, it's likely an SB complete scenario
+      if (toCallBB > 0.3 && toCallBB < 0.7 && opponentActions.length === 0) {
+        console.log('[AutoPlay] Detected SB complete scenario (toCall:', toCallBB.toFixed(2), 'BB)');
+        return 'sb-complete';
+      }
     }
 
     // Count raises/bets (only count bets > 1BB as raises, since ≤1BB is likely blind/limp)
