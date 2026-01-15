@@ -1794,35 +1794,45 @@
 
         // Wait for raise panel to appear
         setTimeout(() => {
-          // For unopened scenario, click 3/4 Pot button instead of setting custom amount
-          if (action.scenario === 'unopened') {
-            const defaultBetButtons = document.querySelectorAll('.game-decisions-ctn .default-bet-buttons button.default-bet-button');
-            let threeQuarterPotBtn = null;
+          const defaultBetButtons = document.querySelectorAll('.game-decisions-ctn .default-bet-buttons button.default-bet-button');
 
+          // For unopened scenario, click 3/4 Pot button
+          if (action.scenario === 'unopened') {
+            let targetBtn = null;
             for (const btn of defaultBetButtons) {
               if (btn.textContent.includes('3/4 Pot')) {
-                threeQuarterPotBtn = btn;
+                targetBtn = btn;
                 break;
               }
             }
 
-            if (threeQuarterPotBtn) {
-              threeQuarterPotBtn.click();
+            if (targetBtn) {
+              targetBtn.click();
               console.log('[AutoPlay] ✓ Clicked 3/4 Pot button for unopened raise');
             } else {
-              console.error('[AutoPlay] 3/4 Pot button not found, falling back to custom amount');
-              // Fallback to custom amount if 3/4 Pot button not found
-              if (action.amount) {
-                const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
-                if (raiseInput) {
-                  raiseInput.value = Math.round(action.amount);
-                  raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
-                  raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
-                }
+              console.error('[AutoPlay] 3/4 Pot button not found');
+            }
+          }
+          // For facing-limp scenario, click Pot button
+          else if (action.scenario === 'facing-limp') {
+            let targetBtn = null;
+            for (const btn of defaultBetButtons) {
+              // Match "Pot" exactly (not "3/4 Pot" or "1/2 Pot")
+              if (btn.textContent.trim() === 'Pot') {
+                targetBtn = btn;
+                break;
               }
             }
-          } else {
-            // For other scenarios, use custom amount
+
+            if (targetBtn) {
+              targetBtn.click();
+              console.log('[AutoPlay] ✓ Clicked Pot button for facing-limp raise');
+            } else {
+              console.error('[AutoPlay] Pot button not found');
+            }
+          }
+          // For other scenarios, use custom amount (fallback)
+          else {
             if (!action.amount) {
               console.error('[AutoPlay] Raise amount not specified');
               return;
@@ -1840,15 +1850,15 @@
             raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
           }
 
-          // Find and click the confirm raise button
+          // Find and click the RAISE/BET submit button
           setTimeout(() => {
-            const confirmBtn = document.querySelector('.game-decisions-ctn button.raise-confirm, .game-decisions-ctn button.bet-confirm, .game-decisions-ctn .action-buttons button.raise');
+            const confirmBtn = document.querySelector('.game-decisions-ctn .action-buttons input[type="submit"].bet');
             if (confirmBtn && !confirmBtn.disabled) {
               confirmBtn.click();
               console.log(`[AutoPlay] ✓ Raise executed (scenario: ${action.scenario})`);
               dispatchSocketLog('autoplay', `✅ Auto-RAISE executed (${action.scenario})`);
             } else {
-              console.error('[AutoPlay] Raise confirm button not found');
+              console.error('[AutoPlay] Raise/Bet submit button not found');
             }
           }, 100);
         }, 200);
@@ -1981,15 +1991,20 @@
       const tableType = window.AutoPlayEngine.getTableType(activePlayers);
       dispatchSocketLog('autoplay', `🤖 ${autoAction.hand} in ${autoAction.position} (${tableType}) → ${autoAction.action.toUpperCase()}`);
 
-      // Only auto-execute FOLD and CHECK actions (low-risk actions)
-      if (autoAction.action === 'fold' || autoAction.action === 'check') {
+      // Determine if this is a "standard" scenario that should auto-execute
+      // Standard scenarios: unopened (standard open) and facing-limp (limper pressure)
+      const isStandardScenario = autoAction.scenario === 'unopened' || autoAction.scenario === 'facing-limp';
+
+      // Auto-execute: FOLD, CHECK, or RAISE/CALL in standard scenarios
+      if (autoAction.action === 'fold' || autoAction.action === 'check' ||
+          (isStandardScenario && (autoAction.action === 'raise' || autoAction.action === 'call'))) {
         scheduleAutoAction(autoAction);
         // Suppress turn sound when autoplay is handling the action
         isMyTurnPending = false;
         return true;
       } else {
-        // Log non-fold/check actions but don't auto-execute
-        console.log(`[AutoPlay] ${autoAction.action.toUpperCase()} detected but not auto-executing (only fold/check is auto-played)`);
+        // Log non-standard actions but don't auto-execute (facing raises, 3-bets, etc.)
+        console.log(`[AutoPlay] ${autoAction.action.toUpperCase()} in ${autoAction.scenario} - requires manual action`);
         dispatchSocketLog('autoplay', `⏸️ ${autoAction.action.toUpperCase()} requires manual action`);
         return false;
       }
