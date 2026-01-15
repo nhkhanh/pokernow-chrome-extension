@@ -1783,11 +1783,6 @@
       }
 
       case 'raise': {
-        if (!action.amount) {
-          console.error('[AutoPlay] Raise amount not specified');
-          return;
-        }
-
         // Click raise button first to open the raise panel
         const raiseBtn = actionButtons.querySelector('button.raise');
         if (!raiseBtn || raiseBtn.disabled) {
@@ -1797,25 +1792,61 @@
 
         raiseBtn.click();
 
-        // Wait for raise panel to appear, then set amount and confirm
+        // Wait for raise panel to appear
         setTimeout(() => {
-          const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
-          if (!raiseInput) {
-            console.error('[AutoPlay] Raise input not found');
-            return;
-          }
+          // For unopened scenario, click 3/4 Pot button instead of setting custom amount
+          if (action.scenario === 'unopened') {
+            const defaultBetButtons = document.querySelectorAll('.game-decisions-ctn .default-bet-buttons button.default-bet-button');
+            let threeQuarterPotBtn = null;
 
-          // Set the raise amount
-          raiseInput.value = Math.round(action.amount);
-          raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
-          raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+            for (const btn of defaultBetButtons) {
+              if (btn.textContent.includes('3/4 Pot')) {
+                threeQuarterPotBtn = btn;
+                break;
+              }
+            }
+
+            if (threeQuarterPotBtn) {
+              threeQuarterPotBtn.click();
+              console.log('[AutoPlay] ✓ Clicked 3/4 Pot button for unopened raise');
+            } else {
+              console.error('[AutoPlay] 3/4 Pot button not found, falling back to custom amount');
+              // Fallback to custom amount if 3/4 Pot button not found
+              if (action.amount) {
+                const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
+                if (raiseInput) {
+                  raiseInput.value = Math.round(action.amount);
+                  raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+                  raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+              }
+            }
+          } else {
+            // For other scenarios, use custom amount
+            if (!action.amount) {
+              console.error('[AutoPlay] Raise amount not specified');
+              return;
+            }
+
+            const raiseInput = document.querySelector('.game-decisions-ctn input[type="text"], .game-decisions-ctn input[type="number"]');
+            if (!raiseInput) {
+              console.error('[AutoPlay] Raise input not found');
+              return;
+            }
+
+            // Set the raise amount
+            raiseInput.value = Math.round(action.amount);
+            raiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+            raiseInput.dispatchEvent(new Event('change', { bubbles: true }));
+          }
 
           // Find and click the confirm raise button
           setTimeout(() => {
             const confirmBtn = document.querySelector('.game-decisions-ctn button.raise-confirm, .game-decisions-ctn button.bet-confirm, .game-decisions-ctn .action-buttons button.raise');
             if (confirmBtn && !confirmBtn.disabled) {
               confirmBtn.click();
-              console.log(`[AutoPlay] ✓ Raise ${action.amount} executed`);
+              console.log(`[AutoPlay] ✓ Raise executed (scenario: ${action.scenario})`);
+              dispatchSocketLog('autoplay', `✅ Auto-RAISE executed (${action.scenario})`);
             } else {
               console.error('[AutoPlay] Raise confirm button not found');
             }

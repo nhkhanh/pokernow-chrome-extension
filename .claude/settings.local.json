@@ -8,7 +8,14 @@
       "Bash(git config:*)",
       "Bash(findstr:*)",
       "Bash(git push)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(git mv:*)",
+      "Bash(cat:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File build.ps1)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git pull:*)"
     ]
   }
 }
